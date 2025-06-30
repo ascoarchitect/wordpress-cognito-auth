@@ -1,0 +1,474 @@
+/* WordPress Cognito Auth Admin Styles */
+
+.cognito-features {
+    margin-top: 20px;
+}
+
+.cognito-card {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.cognito-card h2 {
+    margin-top: 0;
+    color: #23282d;
+    font-size: 1.3em;
+}
+
+.cognito-card p {
+    color: #666;
+    margin-bottom: 20px;
+}
+
+/* Feature toggle styles */
+.form-table th {
+    width: 200px;
+    padding: 15px 10px 15px 0;
+    vertical-align: top;
+}
+
+.form-table td {
+    padding: 15px 10px;
+}
+
+.form-table input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.form-table .description {
+    margin-top: 5px;
+    font-style: italic;
+    color: #666;
+}
+
+/* Test connection section */
+.cognito-test-section {
+    margin-top: 30px;
+    padding: 20px;
+    background: #f9f9f9;
+    border: 1px solid #e5e5e5;
+    border-radius: 4px;
+}
+
+.cognito-test-section h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+}
+
+#test-results {
+    padding: 10px;
+    border-radius: 4px;
+    display: none;
+}
+
+#test-results.success {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    display: block;
+}
+
+#test-results.error {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    display: block;
+}
+
+#test-results.loading {
+    background: #d1ecf1;
+    border: 1px solid #bee5eb;
+    color: #0c5460;
+    display: block;
+}
+
+/* Setup guide styles */
+.cognito-help {
+    margin-top: 20px;
+}
+
+.setup-steps {
+    margin-top: 20px;
+}
+
+.step {
+    margin-bottom: 30px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-left: 4px solid #007cba;
+    border-radius: 0 4px 4px 0;
+}
+
+.step h3 {
+    margin-top: 0;
+    color: #007cba;
+    font-size: 1.1em;
+}
+
+.step p {
+    margin-bottom: 15px;
+}
+
+.step ul {
+    margin-left: 20px;
+}
+
+.step li {
+    margin-bottom: 8px;
+}
+
+.step code {
+    background: #f1f1f1;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+}
+
+/* Sync management styles */
+.sync-management-container {
+    margin-top: 20px;
+}
+
+.sync-actions {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.sync-action-box {
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    flex: 1;
+    min-width: 300px;
+}
+
+.sync-action-box h3 {
+    margin-top: 0;
+    color: #23282d;
+}
+
+.sync-action-box p {
+    color: #666;
+    margin-bottom: 15px;
+}
+
+/* Progress bars */
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background: #f0f0f1;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 10px 0;
+}
+
+.progress-bar .progress {
+    height: 100%;
+    background: #007cba;
+    transition: width 0.3s ease;
+    border-radius: 10px;
+}
+
+/* Results tables */
+.sync-results {
+    margin-top: 20px;
+}
+
+.sync-results table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+.sync-results th,
+.sync-results td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.sync-results th {
+    background: #f8f9fa;
+    font-weight: 600;
+}
+
+/* Status indicators */
+.sync-status {
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.sync-status.enabled {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.sync-status.disabled {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+.sync-status.synced {
+    background-color: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+/* Log levels */
+.log-level {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.log-level-error {
+    background-color: #dc3545;
+    color: white;
+}
+
+.log-level-warning {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+.log-level-info {
+    background-color: #17a2b8;
+    color: white;
+}
+
+.log-level-debug {
+    background-color: #6c757d;
+    color: white;
+}
+
+/* Logs container */
+.logs-container {
+    margin-top: 20px;
+    max-height: 500px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.logs-container table {
+    margin: 0;
+}
+
+.logs-container th,
+.logs-container td {
+    padding: 8px 12px;
+    font-size: 13px;
+}
+
+.logs-container th {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 1;
+}
+
+/* Group management */
+.group-management-container {
+    margin-top: 20px;
+}
+
+.group-management-container table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+.group-management-container th,
+.group-management-container td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.group-management-container th {
+    background: #f8f9fa;
+    font-weight: 600;
+}
+
+/* Tab content */
+.tab-content {
+    margin-top: 20px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .sync-actions {
+        flex-direction: column;
+    }
+    
+    .sync-action-box {
+        min-width: auto;
+    }
+    
+    .step code {
+        word-break: break-all;
+    }
+}
+
+/* Notices */
+.cognito-notice {
+    padding: 12px;
+    margin: 15px 0;
+    border-left: 4px solid;
+    border-radius: 0 4px 4px 0;
+}
+
+.cognito-notice.notice-success {
+    background: #d4edda;
+    border-color: #28a745;
+    color: #155724;
+}
+
+.cognito-notice.notice-error {
+    background: #f8d7da;
+    border-color: #dc3545;
+    color: #721c24;
+}
+
+.cognito-notice.notice-warning {
+    background: #fff3cd;
+    border-color: #ffc107;
+    color: #856404;
+}
+
+.cognito-notice.notice-info {
+    background: #d1ecf1;
+    border-color: #17a2b8;
+    color: #0c5460;
+}
+
+/* Button styles */
+.button.cognito-primary {
+    background: #007cba;
+    border-color: #007cba;
+    color: white;
+}
+
+.button.cognito-primary:hover {
+    background: #005a87;
+    border-color: #005a87;
+}
+
+.button.cognito-secondary {
+    background: #6c757d;
+    border-color: #6c757d;
+    color: white;
+}
+
+.button.cognito-secondary:hover {
+    background: #545b62;
+    border-color: #545b62;
+}
+
+/* Loading states */
+.cognito-loading {
+    position: relative;
+}
+
+.cognito-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #007cba;
+    border-radius: 50%;
+    animation: cognito-spinner 1s linear infinite;
+}
+
+@keyframes cognito-spinner {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* User profile fields */
+.cognito-user-fields {
+    margin-top: 20px;
+}
+
+.cognito-user-fields table {
+    width: 100%;
+}
+
+.cognito-user-fields th {
+    width: 150px;
+    padding: 15px 10px 15px 0;
+    vertical-align: top;
+}
+
+.cognito-user-fields td {
+    padding: 15px 10px;
+}
+
+.cognito-user-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.cognito-user-status .dashicons {
+    font-size: 16px;
+}
+
+.cognito-user-status.connected {
+    color: #46b450;
+}
+
+.cognito-user-status.disconnected {
+    color: #dc3232;
+}
+
+/* Tooltips */
+.cognito-tooltip {
+    position: relative;
+    cursor: help;
+}
+
+.cognito-tooltip:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+}
+
+.cognito-tooltip:hover::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #333;
+    z-index: 1000;
+}

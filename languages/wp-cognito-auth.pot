@@ -1,0 +1,333 @@
+# Copyright (C) 2024 WordPress Cognito Authentication & Sync
+# This file is distributed under the GPL v3 or later.
+msgid ""
+msgstr ""
+"Project-Id-Version: WordPress Cognito Authentication & Sync 2.0.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/wp-cognito-auth\n"
+"POT-Creation-Date: 2024-01-01 00:00:00+00:00\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"PO-Revision-Date: 2024-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+
+#: includes/Admin.php:52
+msgid "Settings"
+msgstr ""
+
+#: includes/Admin.php:59
+msgid "User Sync"
+msgstr ""
+
+#: includes/Admin.php:66
+msgid "Logs"
+msgstr ""
+
+#: includes/Admin.php:104
+msgid "Cognito Authentication & Sync"
+msgstr ""
+
+#: includes/Admin.php:108
+msgid "Features"
+msgstr ""
+
+#: includes/Admin.php:113
+msgid "Authentication"
+msgstr ""
+
+#: includes/Admin.php:118
+msgid "Sync Settings"
+msgstr ""
+
+#: includes/Admin.php:123
+msgid "Setup Guide"
+msgstr ""
+
+#: includes/Admin.php:141
+msgid "Enable Features"
+msgstr ""
+
+#: includes/Admin.php:142
+msgid "Choose which Cognito features to enable for your site."
+msgstr ""
+
+#: includes/Admin.php:149
+msgid "Enable Cognito Authentication (JWT/OIDC)"
+msgstr ""
+
+#: includes/Admin.php:152
+msgid "Allows users to login using Amazon Cognito hosted UI"
+msgstr ""
+
+#: includes/Admin.php:157
+msgid "User Sync"
+msgstr ""
+
+#: includes/Admin.php:162
+msgid "Enable User Synchronization"
+msgstr ""
+
+#: includes/Admin.php:165
+msgid "Sync WordPress users with Cognito user pool"
+msgstr ""
+
+#: includes/Admin.php:170
+msgid "Group Sync"
+msgstr ""
+
+#: includes/Admin.php:175
+msgid "Enable Group/Role Synchronization"
+msgstr ""
+
+#: includes/Admin.php:178
+msgid "Sync WordPress roles with Cognito groups"
+msgstr ""
+
+#: includes/Admin.php:190
+msgid "Authentication feature is not enabled. Please enable it in the Features tab first."
+msgstr ""
+
+#: includes/Admin.php:198
+msgid "User Pool ID"
+msgstr ""
+
+#: includes/Admin.php:207
+msgid "Your Cognito User Pool ID"
+msgstr ""
+
+#: includes/Admin.php:212
+msgid "App Client ID"
+msgstr ""
+
+#: includes/Admin.php:221
+msgid "OAuth App Client ID"
+msgstr ""
+
+#: includes/Admin.php:226
+msgid "App Client Secret"
+msgstr ""
+
+#: includes/Admin.php:235
+msgid "OAuth App Client Secret"
+msgstr ""
+
+#: includes/Admin.php:240
+msgid "AWS Region"
+msgstr ""
+
+#: includes/Admin.php:268
+msgid "Hosted UI Domain"
+msgstr ""
+
+#: includes/Admin.php:277
+msgid "Cognito Hosted UI domain (without https://)"
+msgstr ""
+
+#: includes/Admin.php:282
+msgid "User Creation"
+msgstr ""
+
+#: includes/Admin.php:289
+msgid "Auto-create WordPress users from Cognito"
+msgstr ""
+
+#: includes/Admin.php:292
+msgid "Automatically create WordPress accounts for new Cognito users"
+msgstr ""
+
+#: includes/Admin.php:299
+msgid "Default Role"
+msgstr ""
+
+#: includes/Admin.php:313
+msgid "Default role for new users created via Cognito"
+msgstr ""
+
+#: includes/Admin.php:318
+msgid "Test Connection"
+msgstr ""
+
+#: includes/Admin.php:320
+msgid "Test Cognito Connection"
+msgstr ""
+
+#: includes/Admin.php:332
+msgid "Step 1: Deploy AWS Infrastructure"
+msgstr ""
+
+#: includes/Admin.php:333
+msgid "Deploy the CloudFormation template to create the necessary AWS resources:"
+msgstr ""
+
+#: includes/Admin.php:342
+msgid "Step 2: Configure Cognito User Pool"
+msgstr ""
+
+#: includes/Admin.php:344
+msgid "Create or use existing Cognito User Pool"
+msgstr ""
+
+#: includes/Admin.php:345
+msgid "Add OAuth App Client with authorization code grant"
+msgstr ""
+
+#: includes/Admin.php:346
+msgid "Configure callback URL:"
+msgstr ""
+
+#: includes/Admin.php:347
+msgid "Enable Hosted UI with openid, email, profile scopes"
+msgstr ""
+
+#: includes/Admin.php:351
+msgid "Step 3: Enable Features"
+msgstr ""
+
+#: includes/Admin.php:352
+msgid "Go to the Features tab and enable the functionality you need:"
+msgstr ""
+
+#: includes/Admin.php:354
+msgid "JWT/OIDC login via Cognito"
+msgstr ""
+
+#: includes/Admin.php:355
+msgid "Bidirectional user synchronization"
+msgstr ""
+
+#: includes/Admin.php:356
+msgid "Role/group synchronization"
+msgstr ""
+
+#: includes/Admin.php:361
+msgid "Step 4: Configure Settings"
+msgstr ""
+
+#: includes/Admin.php:362
+msgid "Fill in your Cognito configuration in the Authentication and Sync Settings tabs."
+msgstr ""
+
+#: includes/Admin.php:375
+msgid "Please configure User Pool ID and Region first"
+msgstr ""
+
+#: includes/Admin.php:386
+msgid "Invalid User Pool ID or Region"
+msgstr ""
+
+#: includes/Admin.php:389
+msgid "Connection successful!"
+msgstr ""
+
+#: includes/Admin.php:404
+msgid "Cognito Authentication is enabled but missing required settings. Please configure: "
+msgstr ""
+
+#: includes/API.php:127
+msgid "API URL and Key are required"
+msgstr ""
+
+#: includes/API.php:146
+msgid "Connection successful!"
+msgstr ""
+
+#: includes/API.php:148
+msgid "Connection failed. Check your API URL and key."
+msgstr ""
+
+#: includes/Auth.php:57
+msgid "Missing authentication parameters"
+msgstr ""
+
+#: includes/Auth.php:66
+msgid "Invalid authentication state"
+msgstr ""
+
+#: includes/Auth.php:75
+msgid "Failed to authenticate with Cognito"
+msgstr ""
+
+#: includes/Auth.php:81
+msgid "Invalid token received from Cognito"
+msgstr ""
+
+#: includes/Auth.php:87
+msgid "Failed to create WordPress user"
+msgstr ""
+
+#: includes/Auth.php:235
+msgid "Login with Cognito"
+msgstr ""
+
+#: includes/Plugin.php:64
+msgid "Cognito authentication is not enabled"
+msgstr ""
+
+#: includes/User.php:72
+msgid "Cognito Integration"
+msgstr ""
+
+#: includes/User.php:77
+msgid "Cognito User ID"
+msgstr ""
+
+#: includes/User.php:87
+msgid "No Cognito account linked"
+msgstr ""
+
+#: includes/User.php:89
+msgid "This user is linked to a Cognito account"
+msgstr ""
+
+#: includes/User.php:97
+msgid "Authentication Status"
+msgstr ""
+
+#: includes/User.php:100
+msgid "Can login via Cognito"
+msgstr ""
+
+#: includes/User.php:102
+msgid "WordPress login only"
+msgstr ""
+
+#: includes/User.php:110
+msgid "Sync to Cognito"
+msgstr ""
+
+#: includes/User.php:117
+msgid "Sync this user to Cognito"
+msgstr ""
+
+#: includes/User.php:120
+msgid "If enabled, changes to this user will be synchronized to Cognito"
+msgstr ""
+
+#: includes/User.php:126
+msgid "Manual Sync"
+msgstr ""
+
+#: includes/User.php:131
+msgid "Sync Now"
+msgstr ""
+
+#: includes/User.php:134
+msgid "Manually synchronize this user to Cognito"
+msgstr ""
+
+#: includes/User.php:144
+msgid "Syncing..."
+msgstr ""
+
+#: includes/Sync.php:376
+msgid "User not found"
+msgstr ""
+
+#: includes/Sync.php:397
+msgid "User %s in Cognito"
+msgstr ""
+
+#: includes/Sync.php:402
+msgid "Failed to sync user to Cognito"
+msgstr ""
