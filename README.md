@@ -99,6 +99,8 @@ Go to **Cognito Auth → Settings → Authentication**:
 | **Auto-create Users** | ✅ Automatically create WordPress users from Cognito | Recommended: Enabled |
 | **Default Role** | Default WordPress role for new users | `subscriber` |
 | **Force Cognito Auth** | Skip WordPress login form entirely | Optional |
+| **Login Button Text** | Customize the text shown on Cognito login buttons | `Member Login`, `RAFSA Login`, etc. |
+| **Login Button Color** | Choose a custom color for the login button | Any hex color (e.g., `#007cba`, `#28a745`) |
 
 #### Emergency Access Configuration
 ⚠️ **Important**: When "Force Cognito Authentication" is enabled, save the emergency access URL shown in the settings. This is your only way to access WordPress admin if Cognito fails.
@@ -212,6 +214,44 @@ add_filter('wp_cognito_login_redirect', function($redirect_url, $user) {
     return $redirect_url;
 }, 10, 2);
 ```
+
+### Login Button Customization
+The plugin provides built-in customization options for login buttons to match your site's branding and context:
+
+#### Admin Settings
+Go to **Cognito Auth → Authentication → Settings** to customize:
+
+- **Button Text**: Change from "Login with Cognito" to contextual text like:
+  - `Member Login`
+  - `RAFSA Login`
+  - `Staff Portal`
+  - `Secure Access`
+
+- **Button Color**: Choose any hex color to match your brand:
+  - Corporate blue: `#007cba`
+  - Professional green: `#28a745`
+  - Custom brand colors: `#ff6b35`, `#4ecdc4`, etc.
+
+- **Button Text Color**: Customize the text color for optimal contrast:
+  - White text: `#ffffff` (default, works with most backgrounds)
+  - Black text: `#000000` (good for light backgrounds)
+  - Custom colors: `#333333` for dark gray, `#ffffff` for pure white
+
+#### Real-time Preview
+The admin interface includes a live preview that updates as you change the text and color, showing exactly how your customized button will appear to users.
+
+#### Where Customization Applies
+Your custom button text and color are applied to:
+- Login form buttons (when not using Force Cognito mode)
+- Content restriction messages via `[cognito_restrict]` shortcode
+- Page/post access restriction prompts
+- User re-authentication prompts
+
+#### Example Use Cases
+- **Membership Sites**: Use "Member Login" with your brand colors
+- **Professional Organizations**: "RAFSA Login" for association members
+- **Corporate Intranets**: "Staff Portal" with corporate brand colors
+- **Educational Platforms**: "Student Access" with institutional colors
 
 ### Custom User Attribute Mapping
 ```php

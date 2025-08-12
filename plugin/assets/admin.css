@@ -472,3 +472,72 @@
     border-top-color: #333;
     z-index: 1000;
 }
+
+/* Color picker styles */
+.color-text-field.invalid {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 1px rgba(220, 53, 69, 0.25);
+}
+
+.color-picker {
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    height: 40px;
+    vertical-align: top;
+}
+
+.color-text-field {
+    font-family: monospace;
+    text-transform: uppercase;
+}
+
+/* Login button customization preview */
+.cognito-button-customization {
+    margin-top: 15px;
+    padding: 15px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.cognito-button-customization h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+#login-button-preview.cognito-login-preview {
+    background-color: #ff9900 !important;
+    border: 1px solid #ff9900 !important;
+    color: #ffffff !important;
+    padding: 10px 20px !important;
+    border-radius: 3px !important;
+    text-decoration: none !important;
+    display: inline-block !important;
+    margin: 10px 0 !important;
+    transition: all 0.2s ease !important;
+    cursor: pointer !important;
+    font-size: 14px !important;
+    font-weight: normal !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+    line-height: normal !important;
+    min-height: auto !important;
+    text-align: center !important;
+}
+
+/* Override WordPress admin button styles completely */
+.form-table #login-button-preview.cognito-login-preview,
+.form-table button#login-button-preview.cognito-login-preview {
+    background: #ff9900 !important;
+    background-color: #ff9900 !important;
+    background-image: none !important;
+    border: 1px solid #ff9900 !important;
+    border-color: #ff9900 !important;
+    color: #ffffff !important;
+    padding: 10px 20px !important;
+    height: auto !important;
+    width: auto !important;
+    font-size: 14px !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+}

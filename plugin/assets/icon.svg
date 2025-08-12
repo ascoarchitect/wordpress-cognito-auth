@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle -->
+  <circle cx="128" cy="128" r="120" fill="#ff9900" stroke="#e68a00" stroke-width="4"/>
+  
+  <!-- AWS Cognito Logo Elements -->
+  <!-- User Icon -->
+  <circle cx="128" cy="100" r="24" fill="white"/>
+  <path d="M128 136 C105 136 86 155 86 178 L86 190 C86 194 90 198 94 198 L162 198 C166 198 170 194 170 190 L170 178 C170 155 151 136 128 136 Z" fill="white"/>
+  
+  <!-- Security/Shield Elements -->
+  <g stroke="white" stroke-width="3" fill="none">
+    <!-- Lock Symbol -->
+    <rect x="64" y="180" width="16" height="20" rx="2"/>
+    <path d="M66 188 L66 184 C66 179 70 175 75 175 C80 175 84 179 84 184 L84 188"/>
+    
+    <!-- Key Symbol -->
+    <circle cx="192" cy="190" r="6"/>
+    <line x1="186" y1="190" x2="172" y2="190"/>
+    <line x1="175" y1="187" x2="175" y2="193"/>
+    <line x1="178" y1="187" x2="178" y2="193"/>
+  </g>
+  
+  <!-- Connection/Network Lines -->
+  <g stroke="white" stroke-width="2" opacity="0.7">
+    <line x1="75" y1="95" x2="105" y2="105"/>
+    <line x1="151" y1="105" x2="181" y2="95"/>
+    <line x1="95" y1="70" x2="115" y2="85"/>
+    <line x1="141" y1="85" x2="161" y2="70"/>
+  </g>
+  
+  <!-- Small Connection Nodes -->
+  <circle cx="75" cy="95" r="4" fill="white"/>
+  <circle cx="181" cy="95" r="4" fill="white"/>
+  <circle cx="95" cy="70" r="4" fill="white"/>
+  <circle cx="161" cy="70" r="4" fill="white"/>
+  
+  <!-- WordPress 'W' Integration -->
+  <g transform="translate(105, 45)">
+    <path d="M0 0 L6 20 L12 8 L18 20 L24 0 L18 0 L15 12 L12 4 L9 12 L6 0 Z" fill="white" opacity="0.8"/>
+  </g>
+  
+  <!-- Sync Arrows -->
+  <g stroke="white" stroke-width="2" fill="white">
+    <!-- Curved sync arrows around the user -->
+    <path d="M90 120 C85 115 85 105 90 100" marker-end="url(#arrowhead)"/>
+    <path d="M166 100 C171 105 171 115 166 120" marker-end="url(#arrowhead)"/>
+  </g>
+  
+  <!-- Arrow marker definition -->
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="white"/>
+    </marker>
+  </defs>
+  
+  <!-- Subtle gradient overlay -->
+  <defs>
+    <radialGradient id="shine" cx="0.3" cy="0.3" r="0.7">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.3)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+  </defs>
+  <circle cx="128" cy="128" r="120" fill="url(#shine)"/>
+</svg>

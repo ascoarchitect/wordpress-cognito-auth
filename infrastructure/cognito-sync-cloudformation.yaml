@@ -1,0 +1,541 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: WordPress to Cognito User Sync Infrastructure
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name for resource naming
+
+  CognitoUserPoolId:
+    Type: String
+    Description: ID of the existing Cognito User Pool (e.g., us-west-2_xxxxxxxx)
+
+Resources:
+  # Lambda Function
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub wp-cognito-sync-${Environment}
+      Handler: index.handler
+      Architectures:
+        - arm64
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const {
+              CognitoIdentityProviderClient,
+              AdminCreateUserCommand,
+              AdminUpdateUserAttributesCommand,
+              AdminDeleteUserCommand,
+              AdminSetUserPasswordCommand,
+              AdminGetUserCommand,
+              ListUsersCommand,
+              CreateGroupCommand,
+              GetGroupCommand,
+              AdminAddUserToGroupCommand,
+              AdminRemoveUserFromGroupCommand
+          } = require("@aws-sdk/client-cognito-identity-provider");
+          const client = new CognitoIdentityProviderClient({});
+          exports.handler = async (event) => {
+              console.log('Received event:', JSON.stringify(event, null, 2));
+              try {
+                  let body;
+                  if (event.body) {
+                      try {
+                          body = JSON.parse(event.body);
+                      } catch (e) {
+                          console.log('Failed to parse JSON, attempting to parse as form data');
+                          const formData = parseFormData(event.body);
+                          body = {
+                              action: formData.action,
+                              user: {
+                                  email: formData.email || formData.body,
+                                  username: (formData.username || formData.email || formData.body || '').split('@')[0]
+                              }
+                          };
+                      }
+                  } else {
+                      throw new Error('No body found in the request');
+                  }
+                  console.log('Parsed body:', body);
+                  const { action } = body;
+                  const userPoolId = process.env.USER_POOL_ID;
+                  if (!userPoolId) {
+                      throw new Error('USER_POOL_ID environment variable is required');
+                  }
+                  let result;
+                  switch (action) {
+                      case 'create_group':
+                          result = await handleGroupCreate(userPoolId, body.group);
+                          break;
+                      case 'update_group_membership':
+                          result = await handleGroupMembership(userPoolId, body.group);
+                          break;
+                      case 'create':
+                      case 'update':
+                      case 'delete':
+                          if (!body.user || !body.user.email) {
+                              throw new Error('User email is required for user operations');
+                          }
+                          result = await handleUserOperations(userPoolId, action, body.user);
+                          break;
+                      default:
+                          throw new Error('Invalid action specified');
+                  }
+                  return {
+                      statusCode: 200,
+                      headers: {
+                          'Content-Type': 'application/json',
+                          'Access-Control-Allow-Origin': '*'
+                      },
+                      body: JSON.stringify({
+                          message: 'Success',
+                          result: result
+                      })
+                  };
+              } catch (error) {
+                  console.error('Error:', error);
+                  return {
+                      statusCode: error.statusCode || 500,
+                      headers: {
+                          'Content-Type': 'application/json',
+                          'Access-Control-Allow-Origin': '*'
+                      },
+                      body: JSON.stringify({
+                          error: error.message
+                      })
+                  };
+              }
+          };
+          async function handleGroupCreate(userPoolId, group) {
+              if (!group.name) {
+                  throw new Error('Group name is required');
+              }
+              try {
+                  // Check if group already exists
+                  try {
+                      await client.send(new GetGroupCommand({
+                          GroupName: group.name,
+                          UserPoolId: userPoolId
+                      }));
+                      console.log(`Group ${group.name} already exists`);
+                      return { message: 'Group already exists' };
+                  } catch (error) {
+                      // Only proceed with creation if group doesn't exist
+                      if (error.name !== 'ResourceNotFoundException') {
+                          throw error;
+                      }
+                  }
+                  const command = new CreateGroupCommand({
+                      GroupName: group.name,
+                      UserPoolId: userPoolId,
+                      Description: group.description || ''
+                  });
+                  console.log('Creating group with params:', JSON.stringify({
+                      GroupName: group.name,
+                      UserPoolId: userPoolId,
+                      Description: group.description || ''
+                  }, null, 2));
+                  const result = await client.send(command);
+                  return result;
+              } catch (error) {
+                  console.error('Error in handleGroupCreate:', error);
+                  throw error;
+              }
+          }
+          async function handleGroupMembership(userPoolId, group) {
+              if (!group.name || !group.user_id) {
+                  throw new Error('Group name and user ID are required for group membership operations');
+              }
+              try {
+                  const command = group.operation === 'add'
+                      ? new AdminAddUserToGroupCommand({
+                          GroupName: group.name,
+                          UserPoolId: userPoolId,
+                          Username: group.user_id
+                      })
+                      : new AdminRemoveUserFromGroupCommand({
+                          GroupName: group.name,
+                          UserPoolId: userPoolId,
+                          Username: group.user_id
+                      });
+                  console.log(`${group.operation === 'add' ? 'Adding' : 'Removing'} user ${group.user_id} ${group.operation === 'add' ? 'to' : 'from'} group ${group.name}`);
+                  const result = await client.send(command);
+                  return result;
+              } catch (error) {
+                  console.error('Error in handleGroupMembership:', error);
+                  throw error;
+              }
+          }
+          async function handleUserOperations(userPoolId, action, user) {
+              switch (action) {
+                  case 'create':
+                      return await createUser(userPoolId, user);
+                  case 'update':
+                      return await updateUser(userPoolId, user);
+                  case 'delete':
+                      return await deleteUser(userPoolId, user);
+                  default:
+                      throw new Error('Invalid user operation');
+              }
+          }
+          async function createUser(userPoolId, user) {
+              if (!user.username || !user.email) {
+                  throw new Error('Username and email are required for user creation');
+              }
+              const input = {
+                  UserPoolId: userPoolId,
+                  Username: user.email, // Always use email as username
+                  UserAttributes: [
+                      {
+                          Name: 'email',
+                          Value: user.email
+                      },
+                      {
+                          Name: 'email_verified',
+                          Value: 'true'
+                      }
+                  ],
+                  MessageAction: 'SUPPRESS',
+                  TemporaryPassword: generateRandomString(30)
+              };
+              if (user.wp_user_id) {
+                  input.UserAttributes.push({
+                      Name: 'custom:wp_user_id',
+                      Value: user.wp_user_id.toString()
+                  });
+              }
+              if (user.wp_membercategory) {
+                  input.UserAttributes.push({
+                      Name: 'custom:wp_membercategory',
+                      Value: user.wp_membercategory.toString()
+                  });
+              }
+              if (user.wp_memberrank) {
+                  input.UserAttributes.push({
+                      Name: 'custom:wp_memberrank',
+                      Value: user.wp_memberrank.toString()
+                  });
+              }
+              if (user.firstName) {
+                  input.UserAttributes.push({
+                      Name: 'given_name',
+                      Value: user.firstName
+                  });
+              }
+              if (user.lastName) {
+                  input.UserAttributes.push({
+                      Name: 'family_name',
+                      Value: user.lastName
+                  });
+              }
+              if (user.name) {
+                  input.UserAttributes.push({
+                      Name: 'name',
+                      Value: user.name
+                  });
+              }
+              try {
+                  console.log('Creating user with input:', JSON.stringify(input, null, 2));
+                  const createCommand = new AdminCreateUserCommand(input);
+                  const createResult = await client.send(createCommand);
+                  // Set permanent password for passwordless auth
+                  const setPasswordInput = {
+                      UserPoolId: userPoolId,
+                      Username: user.email,
+                      Password: generateRandomString(30),
+                      Permanent: true
+                  };
+                  console.log('Setting permanent password for passwordless auth');
+                  const setPasswordCommand = new AdminSetUserPasswordCommand(setPasswordInput);
+                  await client.send(setPasswordCommand);
+                  return createResult;
+              } catch (error) {
+                  console.error('Error in createUser:', error);
+                  throw error;
+              }
+          }
+          async function updateUser(userPoolId, user) {
+              if (!user.email) {
+                  throw new Error('Email is required for user update');
+              }
+              // If we have a Cognito user ID, use it directly
+              if (user.cognito_user_id) {
+                  try {
+                      const input = {
+                          UserPoolId: userPoolId,
+                          Username: user.cognito_user_id,
+                          UserAttributes: [
+                              {
+                                  Name: 'email',
+                                  Value: user.email
+                              },
+                              {
+                                  Name: 'email_verified',
+                                  Value: 'true'
+                              }
+                          ]
+                      };
+                      if (user.wp_user_id) {
+                          input.UserAttributes.push({
+                              Name: 'custom:wp_user_id',
+                              Value: user.wp_user_id.toString()
+                          });
+                      }
+                      if (user.wp_membercategory) {
+                          input.UserAttributes.push({
+                              Name: 'custom:wp_membercategory',
+                              Value: user.wp_membercategory.toString()
+                          });
+                      }
+                      if (user.wp_memberrank) {
+                          input.UserAttributes.push({
+                              Name: 'custom:wp_memberrank',
+                              Value: user.wp_memberrank.toString()
+                          });
+                      }
+                      if (user.firstName) {
+                          input.UserAttributes.push({
+                              Name: 'given_name',
+                              Value: user.firstName
+                          });
+                      }
+                      if (user.lastName) {
+                          input.UserAttributes.push({
+                              Name: 'family_name',
+                              Value: user.lastName
+                          });
+                      }
+                      if (user.name) {
+                          input.UserAttributes.push({
+                              Name: 'name',
+                              Value: user.name
+                          });
+                      }
+                      console.log('Updating user attributes:', JSON.stringify(input, null, 2));
+                      const command = new AdminUpdateUserAttributesCommand(input);
+                      const result = await client.send(command);
+                      return {
+                          ...result,
+                          cognitoUsername: user.cognito_user_id
+                      };
+                  } catch (error) {
+                      if (error.name === 'UserNotFoundException') {
+                          console.log('User not found with Cognito ID, attempting to create');
+                          return createUser(userPoolId, user);
+                      }
+                      throw error;
+                  }
+              }
+              // If we don't have a Cognito ID, create a new user
+              console.log('No Cognito ID provided, creating new user');
+              return createUser(userPoolId, user);
+          }
+          async function deleteUser(userPoolId, user) {
+              if (!user.cognito_user_id) {
+                  throw new Error('Cognito User ID is required for deletion');
+              }
+              const input = {
+                  UserPoolId: userPoolId,
+                  Username: user.cognito_user_id
+              };
+              try {
+                  console.log('Deleting user with input:', JSON.stringify(input, null, 2));
+                  const command = new AdminDeleteUserCommand(input);
+                  const result = await client.send(command);
+                  return {
+                      ...result,
+                      cognitoUsername: user.cognito_user_id
+                  };
+              } catch (error) {
+                  if (error.name === 'UserNotFoundException') {
+                      return { message: 'User not found' };
+                  }
+                  throw error;
+              }
+          }
+          function parseFormData(formDataString) {
+              const result = {};
+              const parts = formDataString.split('\r\n');
+              let currentKey = '';
+              for (let i = 0; i < parts.length; i++) {
+                  const part = parts[i];
+                  if (part.includes('Content-Disposition: form-data;')) {
+                      const match = part.match(/name="([^"]+)"/);
+                      if (match) {
+                          currentKey = match[1];
+                          i += 2;
+                          if (i < parts.length) {
+                              const value = parts[i].trim();
+                              if (value) {
+                                  result[currentKey] = value;
+                              }
+                          }
+                      }
+                  }
+              }
+              return result;
+          }
+          function generateRandomString(length) {
+              const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()';
+              let result = '';
+              for (let i = 0; i < length; i++) {
+                  result += charset.charAt(Math.floor(Math.random() * charset.length));
+              }
+              return result;
+          }
+      Runtime: nodejs22.x
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref CognitoUserPoolId
+
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CognitoAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminUpdateUserAttributes
+                  - cognito-idp:AdminDeleteUser
+                  - cognito-idp:AdminSetUserPassword
+                  - cognito-idp:ListUsers
+                  - cognito-idp:ListUsersInGroup
+                  - cognito-idp:CreateGroup
+                  - cognito-idp:GetGroup
+                  - cognito-idp:AdminListGroupsForUser
+                  - cognito-idp:AdminAddUserToGroup
+                  - cognito-idp:AdminRemoveUserFromGroup
+                  - cognito-idp:AdminGetUser
+                Resource: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
+
+  # API Gateway REST API
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub wp-cognito-sync-api-${Environment}
+      Description: API for WordPress Cognito synchronization
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # API Gateway Resource
+  ApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: sync
+
+  # API Gateway Method
+  ApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      ApiKeyRequired: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations
+
+  # API Gateway Stage
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    DependsOn: ApiMethod
+    Properties:
+      DeploymentId: !Ref ApiDeployment
+      RestApiId: !Ref ApiGateway
+      StageName: !Ref Environment
+
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ApiMethod
+    Properties:
+      RestApiId: !Ref ApiGateway
+      Description: Deployment for WordPress Cognito sync API
+
+  # API Usage Plan
+  ApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn:
+      - ApiStage
+      - ApiDeployment
+    Properties:
+      ApiStages:
+        - ApiId: !Ref ApiGateway
+          Stage: !Ref Environment
+      Description: Usage plan for WordPress Cognito sync
+      UsagePlanName: !Sub wp-cognito-sync-usage-plan-${Environment}
+      Throttle:
+        BurstLimit: 1000
+        RateLimit: 100
+      Quota:
+        Limit: 10000
+        Period: DAY
+
+  # API Key
+  ApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - ApiStage
+      - ApiDeployment
+    Properties:
+      Name: !Sub wp-cognito-sync-key-${Environment}
+      Description: API Key for WordPress Cognito sync
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref ApiGateway
+          StageName: !Ref Environment
+
+  # Associate API Key with Usage Plan
+  ApiUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref ApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref ApiUsagePlan
+
+  # Lambda Permission for API Gateway
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/sync
+
+  ApiKey:
+    Description: API Key (use 'aws apigateway get-api-key --api-key [key-id]
+      --include-value' to get the value)
+    Value: !Ref ApiKey

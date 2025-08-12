@@ -51,6 +51,9 @@
         // Dynamic form validation
         validateCognitoSettings();
         $('.cognito-setting').on('input', validateCognitoSettings);
+        
+        // Color picker functionality for login button
+        initColorPicker();
     }
 
     /**
@@ -503,5 +506,176 @@
             e.preventDefault();
         }
     });
+
+    /**
+     * Initialize color picker for login button customization
+     */
+    function initColorPicker() {
+        const $colorInput = $('#wp_cognito_auth_login_button_color');
+        const $colorText = $('#wp_cognito_auth_login_button_color_text');
+        const $textColorInput = $('#wp_cognito_auth_login_button_text_color');
+        const $textColorText = $('#wp_cognito_auth_login_button_text_color_text');
+        const $textInput = $('#wp_cognito_auth_login_button_text');
+        const $preview = $('#login-button-preview');
+        
+        // Handle background color picker
+        if ($colorInput.length && $colorText.length) {
+            // Update text field when color picker changes
+            $colorInput.on('input change', function() {
+                const color = $(this).val();
+                $colorText.val(color);
+                updateLoginButtonPreview($colorInput.val(), $textColorInput.val(), $textInput.val());
+            });
+            
+            // Allow manual text input (remove readonly and add validation)
+            $colorText.prop('readonly', false);
+            $colorText.on('input', function() {
+                let color = $(this).val();
+                // Basic hex color validation
+                if (/^#[0-9A-F]{6}$/i.test(color)) {
+                    $colorInput.val(color);
+                    updateLoginButtonPreview(color, $textColorInput.val(), $textInput.val());
+                    $(this).removeClass('invalid');
+                } else {
+                    $(this).addClass('invalid');
+                }
+            });
+        }
+        
+        // Handle text color picker
+        if ($textColorInput.length && $textColorText.length) {
+            // Update text field when color picker changes
+            $textColorInput.on('input change', function() {
+                const color = $(this).val();
+                $textColorText.val(color);
+                updateLoginButtonPreview($colorInput.val(), color, $textInput.val());
+            });
+            
+            // Allow manual text input (remove readonly and add validation)
+            $textColorText.prop('readonly', false);
+            $textColorText.on('input', function() {
+                let color = $(this).val();
+                // Basic hex color validation
+                if (/^#[0-9A-F]{6}$/i.test(color)) {
+                    $textColorInput.val(color);
+                    updateLoginButtonPreview($colorInput.val(), color, $textInput.val());
+                    $(this).removeClass('invalid');
+                } else {
+                    $(this).addClass('invalid');
+                }
+            });
+        }
+        
+        // Update preview when button text changes
+        if ($textInput.length && $preview.length) {
+            $textInput.on('input', function() {
+                const text = $(this).val() || 'Login with Cognito';
+                $preview.text(text);
+                updateLoginButtonPreview($colorInput.val(), $textColorInput.val(), text);
+            });
+        }
+        
+        // Initial preview setup
+        if ($preview.length) {
+            // Force initial preview update with a slight delay to ensure DOM is ready
+            setTimeout(function() {
+                updateLoginButtonPreview(
+                    $colorInput.val() || '#ff9900', 
+                    $textColorInput.val() || '#ffffff', 
+                    $textInput.val() || 'Login with Cognito'
+                );
+            }, 100);
+        }
+    }
+    
+    /**
+     * Update login button preview
+     */
+    function updateLoginButtonPreview(bgColor, textColor, text) {
+        bgColor = bgColor || '#ff9900';
+        textColor = textColor || '#ffffff';
+        text = text || 'Login with Cognito';
+        
+        console.log('Updating button preview:', { bgColor, textColor, text }); // Debug log
+        
+        // Update preview button directly
+        const $preview = $('#login-button-preview');
+        if ($preview.length) {
+            console.log('Preview button found, updating...'); // Debug log
+            
+            $preview.text(text);
+            
+            // Calculate hover color (darker version of background)
+            const hoverBgColor = darkenColor(bgColor, 20);
+            
+            // Apply styles directly to the element
+            $preview.css({
+                'background': bgColor,
+                'background-color': bgColor,
+                'background-image': 'none',
+                'border': `1px solid ${bgColor}`,
+                'border-color': bgColor,
+                'color': textColor,
+                'padding': '10px 20px',
+                'border-radius': '3px',
+                'text-decoration': 'none',
+                'display': 'inline-block',
+                'font-size': '14px',
+                'font-weight': 'normal',
+                'text-shadow': 'none',
+                'box-shadow': 'none',
+                'line-height': 'normal',
+                'min-height': 'auto',
+                'text-align': 'center',
+                'height': 'auto',
+                'width': 'auto',
+                'cursor': 'pointer'
+            });
+            
+            console.log('Button styles applied'); // Debug log
+            
+            // Add hover effects
+            $preview.off('mouseenter mouseleave'); // Remove existing handlers
+            $preview.on('mouseenter', function() {
+                $(this).css({
+                    'background': hoverBgColor,
+                    'background-color': hoverBgColor,
+                    'border-color': hoverBgColor,
+                    'color': textColor
+                });
+            }).on('mouseleave', function() {
+                $(this).css({
+                    'background': bgColor,
+                    'background-color': bgColor,
+                    'border-color': bgColor,
+                    'color': textColor
+                });
+            });
+        } else {
+            console.log('Preview button not found!'); // Debug log
+        }
+    }
+    
+    /**
+     * Darken a hex color by a percentage
+     */
+    function darkenColor(color, percent) {
+        // Remove # if present
+        color = color.replace('#', '');
+        
+        // Parse RGB values
+        const r = parseInt(color.substr(0, 2), 16);
+        const g = parseInt(color.substr(2, 2), 16);
+        const b = parseInt(color.substr(4, 2), 16);
+        
+        // Darken by percentage
+        const factor = (100 - percent) / 100;
+        const newR = Math.round(r * factor);
+        const newG = Math.round(g * factor);
+        const newB = Math.round(b * factor);
+        
+        // Convert back to hex
+        return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+    }
 
 })(jQuery);

@@ -70,6 +70,9 @@ class Admin {
         register_setting('wp_cognito_auth_settings', 'wp_cognito_auth_auto_create_users');
         register_setting('wp_cognito_auth_settings', 'wp_cognito_auth_default_role');
         register_setting('wp_cognito_auth_settings', 'wp_cognito_auth_force_cognito');
+        register_setting('wp_cognito_auth_settings', 'wp_cognito_auth_login_button_text');
+        register_setting('wp_cognito_auth_settings', 'wp_cognito_auth_login_button_color');
+        register_setting('wp_cognito_auth_settings', 'wp_cognito_auth_login_button_text_color');
         
         // Sync settings
         register_setting('wp_cognito_sync_settings', 'wp_cognito_sync_api_url');
@@ -338,6 +341,72 @@ class Admin {
                         <p class="description">
                             <?php _e('When enabled, users will be automatically redirected to Cognito for authentication instead of seeing the WordPress login form. The WordPress login form will still be accessible via the emergency access parameter shown below.', 'wp-cognito-auth'); ?>
                         </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="wp_cognito_auth_login_button_text"><?php _e('Login Button Text', 'wp-cognito-auth'); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" 
+                               name="wp_cognito_auth_login_button_text"
+                               id="wp_cognito_auth_login_button_text"
+                               value="<?php echo esc_attr(get_option('wp_cognito_auth_login_button_text', 'Login with Cognito')); ?>"
+                               class="regular-text"
+                               placeholder="Login with Cognito">
+                        <p class="description"><?php _e('Customize the text displayed on the Cognito login button (e.g., "Member Login", "RAFSA Login")', 'wp-cognito-auth'); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="wp_cognito_auth_login_button_color"><?php _e('Login Button Color', 'wp-cognito-auth'); ?></label>
+                    </th>
+                    <td>
+                        <input type="color" 
+                               name="wp_cognito_auth_login_button_color"
+                               id="wp_cognito_auth_login_button_color"
+                               value="<?php echo esc_attr(get_option('wp_cognito_auth_login_button_color', '#ff9900')); ?>"
+                               class="color-picker"
+                               style="width: 100px;">
+                        <input type="text" 
+                               id="wp_cognito_auth_login_button_color_text"
+                               value="<?php echo esc_attr(get_option('wp_cognito_auth_login_button_color', '#ff9900')); ?>"
+                               class="regular-text color-text-field"
+                               placeholder="#ff9900"
+                               readonly
+                               style="margin-left: 10px; width: 100px;">
+                        <p class="description"><?php _e('Choose a color for the Cognito login button to match your site\'s branding', 'wp-cognito-auth'); ?></p>
+                        
+                        <div class="cognito-button-customization">
+                            <h4><?php _e('Preview', 'wp-cognito-auth'); ?></h4>
+                            <button type="button" class="cognito-login-preview" id="login-button-preview" style="background-color: <?php echo esc_attr(get_option('wp_cognito_auth_login_button_color', '#ff9900')); ?> !important; border-color: <?php echo esc_attr(get_option('wp_cognito_auth_login_button_color', '#ff9900')); ?> !important; color: <?php echo esc_attr(get_option('wp_cognito_auth_login_button_text_color', '#ffffff')); ?> !important; padding: 10px 20px !important; border: 1px solid <?php echo esc_attr(get_option('wp_cognito_auth_login_button_color', '#ff9900')); ?> !important; border-radius: 3px !important; text-decoration: none !important; display: inline-block !important; font-size: 14px !important; font-weight: normal !important; text-shadow: none !important; box-shadow: none !important; line-height: normal !important; min-height: auto !important; text-align: center !important; cursor: pointer;">
+                                <?php echo esc_html(get_option('wp_cognito_auth_login_button_text', 'Login with Cognito')); ?>
+                            </button>
+                            <p class="description" style="margin-bottom: 0;">
+                                <?php _e('This preview updates in real-time as you change the settings above.', 'wp-cognito-auth'); ?>
+                            </p>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">
+                        <label for="wp_cognito_auth_login_button_text_color"><?php _e('Login Button Text Color', 'wp-cognito-auth'); ?></label>
+                    </th>
+                    <td>
+                        <input type="color" 
+                               name="wp_cognito_auth_login_button_text_color"
+                               id="wp_cognito_auth_login_button_text_color"
+                               value="<?php echo esc_attr(get_option('wp_cognito_auth_login_button_text_color', '#ffffff')); ?>"
+                               class="color-picker"
+                               style="width: 100px;">
+                        <input type="text" 
+                               id="wp_cognito_auth_login_button_text_color_text"
+                               value="<?php echo esc_attr(get_option('wp_cognito_auth_login_button_text_color', '#ffffff')); ?>"
+                               class="regular-text color-text-field"
+                               placeholder="#ffffff"
+                               readonly
+                               style="margin-left: 10px; width: 100px;">
+                        <p class="description"><?php _e('Choose the text color for the login button (white works well with most background colors)', 'wp-cognito-auth'); ?></p>
                     </td>
                 </tr>
             </table>
