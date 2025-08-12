@@ -15,10 +15,25 @@ A comprehensive, production-ready WordPress plugin that integrates Amazon Cognit
 
 ### User Synchronization Features
 - **Bidirectional Sync**: Two-way user data synchronization between Cognito and WordPress
-- **Group Sync**: Automatically sync Cognito group memberships to WordPress roles
+- **Advanced Group Management**: Comprehensive group synchronization with visual management interface
 - **Profile Sync**: Sync user profile information (name, email, custom attributes)
-- **Background Processing**: Bulk sync operations with progress tracking
+- **Background Processing**: Bulk sync operations with progress tracking and user selection options
 - **Real-time Updates**: Sync user data on login events
+
+### Group Management System
+- **Visual Interface**: Dedicated group management tab with table view of all WordPress roles
+- **Individual Control**: Enable/disable group sync for each WordPress role independently
+- **Automatic Group Creation**: Automatically creates corresponding Cognito groups when sync is enabled
+- **User Count Display**: Shows how many users are in each role for better management
+- **Status Indicators**: Clear visual indicators for enabled/disabled sync state
+- **Bulk Operations**: Test and full sync operations specifically for groups
+
+### Enhanced Bulk Sync Interface
+- **User Selection Options**: Sync all users or filter by specific WordPress roles
+- **Progressive Disclosure**: Dynamic form elements that show/hide based on selections
+- **Form Validation**: JavaScript validation to prevent invalid submissions
+- **Clear Descriptions**: Each option includes explanatory text for better user experience
+- **Organized Layout**: Dedicated bulk sync tab with proper sections and styling
 
 ### Content Restriction System
 - **Shortcode Protection**: `[cognito_restrict]` shortcodes for inline content protection
@@ -50,6 +65,119 @@ A comprehensive, production-ready WordPress plugin that integrates Amazon Cognit
 3. **Configure Features**
    - Navigate to **Cognito Auth** in WordPress admin menu
    - Enable desired features in the **Features** tab
+
+## 🎛️ Admin Interface
+
+### Navigation Tabs
+The plugin provides a well-organized admin interface with dedicated tabs for different functionality:
+
+#### Features Tab
+- **Feature Toggles**: Enable/disable Authentication, User Sync, and Group/Role Synchronization
+- **Dependency Management**: Features automatically disable dependent features when turned off
+- **Clear Descriptions**: Each feature includes explanatory text about its functionality
+
+#### Authentication Settings Tab
+- **Cognito Configuration**: User Pool ID, Client ID, Client Secret, Region settings
+- **Hosted UI Settings**: Domain configuration and OAuth settings
+- **User Creation Settings**: Auto-create users, default roles, and authentication modes
+- **Login Button Customization**: Text, colors, and branding options
+- **Emergency Access**: Secure emergency login parameter generation and display
+
+#### Sync Settings Tab (when User Sync enabled)
+- **API Configuration**: API URL and key for external sync operations
+- **Sync Behavior**: Configure when and how users are synchronized
+- **Connection Testing**: Test API connectivity and configuration
+
+#### Group Management Tab (when Group Sync enabled)
+- **Visual Role Table**: All WordPress roles displayed with sync status
+- **Individual Controls**: Enable/disable sync for each role independently
+- **Automatic Group Creation**: Groups are created in Cognito when sync is enabled
+- **User Count Display**: Shows how many users are in each role
+- **Status Indicators**: Clear enabled/disabled status for each role
+- **Current Sync Summary**: Overview of which groups are currently being synchronized
+
+#### Bulk Sync Tab
+- **User Sync Operations**:
+  - Test sync to preview changes
+  - Full sync with user selection options (All Users or Users by Role)
+  - Dynamic role selection with form validation
+- **Group Sync Operations** (when Group Sync enabled):
+  - Test group sync to preview group creation and membership changes
+  - Full group sync to create groups and update memberships
+- **Statistics Display**: Results and progress of sync operations
+- **Clear Form Layout**: Organized sections with proper validation and feedback
+
+#### Logs Tab
+- **Sync History**: Detailed logs of all synchronization operations
+- **Error Tracking**: Comprehensive error logging with timestamps
+- **Debug Information**: Detailed information for troubleshooting
+
+#### Setup Guide Tab
+- **Step-by-step Instructions**: Complete setup process from AWS to WordPress
+- **Configuration Examples**: Real examples of settings and URLs
+- **Troubleshooting Guide**: Common issues and solutions
+
+### UI/UX Improvements in Version 2.2.0
+
+#### Enhanced Bulk Sync Interface
+**Problems Fixed**:
+- Confusing radio buttons that both appeared selected
+- Non-functional "Cognito → WordPress" sync option
+- Poor form layout and organization
+- Missing validation for role-based sync
+
+**Solutions Implemented**:
+- Removed confusing sync direction options
+- Added clear user selection options with descriptions:
+  - **All Users**: Sync all WordPress users to Cognito (default)
+  - **Users by Role**: Sync only users with a specific WordPress role
+- Dynamic role selection dropdown that appears when "Users by Role" is selected
+- JavaScript form validation to ensure role is selected when required
+- Improved button positioning and styling
+- Enhanced admin notices for better user feedback
+
+#### Group Management Interface
+**New Features Added**:
+- Clean table layout showing all WordPress roles
+- Visual sync status indicators (Enabled/Disabled)
+- User count display for each role
+- Individual enable/disable controls for each role
+- Automatic Cognito group creation when sync is enabled
+- Clear summary of currently synced groups
+
+**Technical Implementation**:
+```javascript
+// Dynamic form controls
+$('input[name="user_selection"]').on('change', function() {
+    if ($(this).val() === 'role') {
+        $('#role-selection').show();
+    } else {
+        $('#role-selection').hide();
+    }
+});
+
+// Form validation
+$('form[action*="cognito_bulk_sync"]').on('submit', function(e) {
+    var userSelection = $('input[name="user_selection"]:checked').val();
+    if (userSelection === 'role') {
+        var selectedRole = $('select[name="selected_role"]').val();
+        if (!selectedRole) {
+            e.preventDefault();
+            alert('Please select a role to sync.');
+            return false;
+        }
+    }
+});
+```
+
+### Admin Action Handlers
+The plugin handles various admin actions through dedicated methods:
+
+- `cognito_toggle_group_sync`: Enable/disable sync for individual WordPress roles
+- `cognito_test_group_sync`: Preview group sync operations without making changes
+- `cognito_full_group_sync`: Execute full group synchronization
+- `cognito_bulk_sync`: Handle user synchronization with improved selection options
+- `cognito_test_sync`: Test user synchronization
 
 ## ⚙️ Configuration
 
@@ -191,14 +319,70 @@ $groups = get_user_meta(get_current_user_id(), 'cognito_groups', true);
 ### User Synchronization
 
 #### Manual Bulk Sync
-1. Go to **Cognito Auth → User Sync**
-2. Choose sync direction (WordPress → Cognito or Cognito → WordPress)
-3. Select users (All, Unlinked only, or by Role)
-4. Click "Start Bulk Sync"
+1. Go to **Cognito Auth → Bulk Sync**
+2. Choose sync type:
+   - **User Sync**: Synchronize WordPress users with Cognito
+   - **Group Sync**: Synchronize WordPress roles with Cognito groups (when enabled)
+3. For User Sync, select scope:
+   - **All Users**: Sync all WordPress users to Cognito
+   - **Users by Role**: Sync only users with a specific WordPress role
+4. Click "Start Bulk Sync" or "Test Sync" to preview changes
+
+#### Group Management and Synchronization
+The plugin provides comprehensive group management functionality for syncing WordPress roles with Cognito groups.
+
+##### Setting Up Group Sync
+1. **Enable Feature**: Go to **Cognito Auth → Features** and enable "Group/Role Synchronization"
+2. **Configure API**: Go to **Cognito Auth → Sync Settings** and configure API URL and Key
+3. **Manage Groups**: Go to **Cognito Auth → Group Management**
+
+##### Group Management Interface
+The Group Management tab provides a visual interface for managing which WordPress roles should sync with Cognito groups:
+
+**Features**:
+- **Role Overview Table**: Shows all WordPress roles with their sync status
+- **User Count Display**: Shows how many users are assigned to each role
+- **Individual Controls**: Enable/disable sync for each role independently
+- **Status Indicators**: Clear visual indicators for enabled/disabled state
+- **Automatic Group Creation**: When you enable sync for a role, the corresponding Cognito group is automatically created
+
+**How It Works**:
+1. **Enable Sync for a Role**: Click "Enable Sync" next to any WordPress role (e.g., "editor")
+2. **Automatic Group Creation**: System creates a corresponding group in Cognito (e.g., "WP_editor")
+3. **User Assignment**: Users with that WordPress role are automatically added to the Cognito group
+4. **Ongoing Sync**: Group memberships are kept in sync during user logins and bulk sync operations
+
+##### Group Sync Operations
+**Test Group Sync**:
+- Preview which groups would be created in Cognito
+- Shows which users would be added/removed from groups
+- No actual changes are made - preview only
+
+**Full Group Sync**:
+- Creates all enabled groups in Cognito
+- Updates all user group memberships
+- Synchronizes current WordPress role assignments with Cognito groups
+- Provides statistics of operations performed
+
+##### Group Naming Convention
+- WordPress roles are mapped to Cognito groups with the prefix "WP_"
+- Examples:
+  - WordPress role "editor" → Cognito group "WP_editor"
+  - WordPress role "subscriber" → Cognito group "WP_subscriber"
+  - WordPress role "custom_member" → Cognito group "WP_custom_member"
+
+##### Automatic Group Membership Management
+When group sync is enabled, the plugin automatically manages group memberships:
+
+1. **User Login**: When a user logs in, their group memberships are updated based on their WordPress roles
+2. **Role Changes**: When a user's WordPress role changes, their Cognito group memberships are updated
+3. **Bulk Sync**: During bulk sync operations, all group memberships are reconciled
+4. **New Users**: When new users are created, they're automatically added to appropriate groups
 
 #### Automatic Sync
 - Enable "Sync on Login" to automatically sync user data when they authenticate
 - Configure which WordPress roles should be synced as Cognito groups
+- Real-time group membership updates based on role changes
 
 ## 🔧 Advanced Configuration
 
@@ -346,10 +530,10 @@ GPL v3 or later
 - [OAuth 2.0 Flows](https://docs.aws.amazon.com/cognito/latest/developerguide/authorization-endpoint.html)
 
 ### Plugin Information
-- **Version**: 2.1.0
+- **Version**: 2.2.0
 - **Author**: Adam Scott
 - **Tested up to**: WordPress 6.6
-- **Stable tag**: 2.1.0
+- **Stable tag**: 2.2.0
 
 For technical support, please check the troubleshooting section above and WordPress debug logs for specific error messages.
 
@@ -415,6 +599,23 @@ wp-cognito-auth/
 - **Regular Rotation**: Rotate Cognito client secrets and API keys regularly
 
 ## 📝 Changelog
+
+### Version 2.2.0
+- **Complete Group Management System**: Added comprehensive group management functionality with visual interface
+- **Enhanced Bulk Sync Interface**: Completely redesigned bulk sync with better user selection options and form validation
+- **Individual Group Control**: Enable/disable sync for each WordPress role independently with automatic Cognito group creation
+- **Improved Admin Interface**: New tabbed navigation with dedicated sections for Group Management and Bulk Sync
+- **Better User Experience**: Clear descriptions, status indicators, user counts, and progressive disclosure in forms
+- **Advanced Form Validation**: JavaScript validation for role-based sync operations
+- **Enhanced Error Handling**: Comprehensive error messages and logging for all operations
+- **Documentation Updates**: Complete documentation consolidation with detailed usage instructions
+- **UI/UX Improvements**:
+  - Removed confusing radio buttons from bulk sync interface
+  - Added clear user selection options (All Users vs Users by Role)
+  - Dynamic role selection with proper validation
+  - Visual status indicators for group sync status
+  - Organized admin interface with dedicated tabs
+  - Mobile-responsive design improvements
 
 ### Version 2.1.0
 - **Enhanced Emergency Access**: Replaced simple `wp_login=1` with complex random parameter

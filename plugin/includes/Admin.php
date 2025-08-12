@@ -688,19 +688,38 @@ class Admin {
         $user_selection = sanitize_text_field($_POST['user_selection'] ?? 'all');
         $selected_role = sanitize_text_field($_POST['selected_role'] ?? '');
         
-        // Initialize background sync process
-        set_transient('cognito_bulk_sync_status', array(
-            'status' => 'running',
-            'direction' => $sync_direction,
-            'selection' => $user_selection,
-            'role' => $selected_role,
-            'started' => current_time('mysql')
-        ), HOUR_IN_SECONDS);
+        // Validate role selection if specified
+        if ($user_selection === 'role' && empty($selected_role)) {
+            wp_redirect(add_query_arg(array(
+                'page' => 'wp-cognito-auth',
+                'tab' => 'bulk-sync',
+                'message' => 'role_not_selected'
+            ), admin_url('admin.php')));
+            exit;
+        }
+
+        // Initialize API if needed
+        if (!$this->api) {
+            $this->api = new API();
+        }
+
+        // Perform the bulk sync based on user selection
+        if ($user_selection === 'role') {
+            $result = $this->api->bulk_sync_users_by_role($selected_role);
+        } else {
+            $result = $this->api->bulk_sync_users();
+        }
+
+        // Set results in transient for display
+        set_transient('cognito_bulk_sync_results', $result, HOUR_IN_SECONDS);
+
+        $message = $result && !empty($result['processed']) ? 'sync_completed' : 'sync_failed';
         
         // Redirect with success message
         wp_redirect(add_query_arg(array(
-            'page' => 'wp-cognito-auth-sync',
-            'message' => 'sync_started'
+            'page' => 'wp-cognito-auth',
+            'tab' => 'bulk-sync',
+            'message' => $message
         ), admin_url('admin.php')));
         exit;
     }
@@ -742,7 +761,8 @@ class Admin {
         }
         
         wp_redirect(add_query_arg(array(
-            'page' => 'wp-cognito-auth-sync',
+            'page' => 'wp-cognito-auth',
+            'tab' => 'bulk-sync',
             'message' => $message
         ), admin_url('admin.php')));
         exit;
@@ -930,6 +950,55 @@ class Admin {
                 case 'group_creation_failed':
                     echo '<div class="notice notice-error is-dismissible"><p>';
                     echo __('Group sync enabled but failed to create Cognito group. Check the logs for details.', 'wp-cognito-auth');
+                    echo '</p></div>';
+                    break;
+                case 'sync_started':
+                    echo '<div class="notice notice-info is-dismissible"><p>';
+                    echo __('Bulk sync process has been started. Check the logs for progress and results.', 'wp-cognito-auth');
+                    echo '</p></div>';
+                    break;
+                case 'sync_completed':
+                    $results = get_transient('cognito_bulk_sync_results');
+                    if ($results) {
+                        echo '<div class="notice notice-success is-dismissible"><p>';
+                        echo sprintf(
+                            __('Bulk sync completed successfully. Processed: %d, Created: %d, Updated: %d, Failed: %d', 'wp-cognito-auth'),
+                            $results['processed'] ?? 0,
+                            $results['created'] ?? 0,
+                            $results['updated'] ?? 0,
+                            $results['failed'] ?? 0
+                        );
+                        echo '</p></div>';
+                        delete_transient('cognito_bulk_sync_results');
+                    } else {
+                        echo '<div class="notice notice-success is-dismissible"><p>';
+                        echo __('Bulk sync completed successfully. Check the logs for detailed results.', 'wp-cognito-auth');
+                        echo '</p></div>';
+                    }
+                    break;
+                case 'sync_failed':
+                    echo '<div class="notice notice-error is-dismissible"><p>';
+                    echo __('Bulk sync failed. Please check your sync configuration and logs for details.', 'wp-cognito-auth');
+                    echo '</p></div>';
+                    break;
+                case 'role_not_selected':
+                    echo '<div class="notice notice-error is-dismissible"><p>';
+                    echo __('Please select a role when choosing "Users by Role" option.', 'wp-cognito-auth');
+                    echo '</p></div>';
+                    break;
+                case 'test_sync_success':
+                    echo '<div class="notice notice-success is-dismissible"><p>';
+                    echo __('Test sync completed successfully. Check the logs for details.', 'wp-cognito-auth');
+                    echo '</p></div>';
+                    break;
+                case 'test_sync_failed':
+                    echo '<div class="notice notice-error is-dismissible"><p>';
+                    echo __('Test sync failed. Check the logs and API configuration.', 'wp-cognito-auth');
+                    echo '</p></div>';
+                    break;
+                case 'sync_not_configured':
+                    echo '<div class="notice notice-warning is-dismissible"><p>';
+                    echo __('Sync is not properly configured. Please check your API settings.', 'wp-cognito-auth');
                     echo '</p></div>';
                     break;
             }
@@ -1131,22 +1200,49 @@ define('WP_DEBUG_LOG', true);</code></pre>
                     
                     <div class="sync-action-box">
                         <h3><?php _e('Full User Sync', 'wp-cognito-auth'); ?></h3>
-                        <p><?php _e('Synchronize all WordPress users with Cognito. This operation cannot be undone.', 'wp-cognito-auth'); ?></p>
+                        <p><?php _e('Synchronize all WordPress users with Cognito. Creates new users in Cognito and updates existing ones. This operation cannot be undone.', 'wp-cognito-auth'); ?></p>
+
                         <form method="post" action="<?php echo admin_url('admin-post.php'); ?>">
                             <?php wp_nonce_field('cognito_bulk_sync'); ?>
                             <input type="hidden" name="action" value="cognito_bulk_sync">
-                            <label>
-                                <input type="radio" name="sync_direction" value="wp_to_cognito" checked>
-                                <?php _e('WordPress → Cognito', 'wp-cognito-auth'); ?>
-                            </label>
-                            <br>
-                            <label>
-                                <input type="radio" name="user_selection" value="all" checked>
-                                <?php _e('All Users', 'wp-cognito-auth'); ?>
-                            </label>
-                            <button type="submit" class="button button-primary">
-                                <?php _e('Start Full Sync', 'wp-cognito-auth'); ?>
-                            </button>
+                            <input type="hidden" name="sync_direction" value="wp_to_cognito">
+
+                            <div class="sync-options">
+                                <h4><?php _e('User Selection:', 'wp-cognito-auth'); ?></h4>
+                                <label style="display: block; margin-bottom: 8px;">
+                                    <input type="radio" name="user_selection" value="all" checked>
+                                    <?php _e('All Users', 'wp-cognito-auth'); ?>
+                                    <span class="description" style="display: block; margin-left: 20px; font-style: italic; color: #666;">
+                                        <?php _e('Sync all WordPress users to Cognito', 'wp-cognito-auth'); ?>
+                                    </span>
+                                </label>
+
+                                <label style="display: block; margin-bottom: 8px;">
+                                    <input type="radio" name="user_selection" value="role">
+                                    <?php _e('Users by Role', 'wp-cognito-auth'); ?>
+                                    <span class="description" style="display: block; margin-left: 20px; font-style: italic; color: #666;">
+                                        <?php _e('Sync users with a specific WordPress role', 'wp-cognito-auth'); ?>
+                                    </span>
+                                </label>
+
+                                <div id="role-selection" style="margin-left: 20px; margin-top: 10px; display: none;">
+                                    <select name="selected_role">
+                                        <option value=""><?php _e('Select a role...', 'wp-cognito-auth'); ?></option>
+                                        <?php
+                                        $roles = get_editable_roles();
+                                        foreach ($roles as $role_name => $role_info) {
+                                            echo '<option value="' . esc_attr($role_name) . '">' . esc_html($role_info['name']) . '</option>';
+                                        }
+                                        ?>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <p style="margin-top: 15px;">
+                                <button type="submit" class="button button-primary">
+                                    <?php _e('Start Full Sync', 'wp-cognito-auth'); ?>
+                                </button>
+                            </p>
                         </form>
                     </div>
                 </div>
@@ -1206,7 +1302,38 @@ define('WP_DEBUG_LOG', true);</code></pre>
             .sync-action-box h3 {
                 margin-top: 0;
             }
+            .sync-options h4 {
+                margin: 15px 0 10px 0;
+                font-size: 14px;
+                color: #23282d;
+            }
         </style>
+
+        <script>
+        jQuery(document).ready(function($) {
+            // Handle role selection toggle
+            $('input[name="user_selection"]').on('change', function() {
+                if ($(this).val() === 'role') {
+                    $('#role-selection').show();
+                } else {
+                    $('#role-selection').hide();
+                }
+            });
+
+            // Validate form submission
+            $('form[action*="cognito_bulk_sync"]').on('submit', function(e) {
+                var userSelection = $('input[name="user_selection"]:checked').val();
+                if (userSelection === 'role') {
+                    var selectedRole = $('select[name="selected_role"]').val();
+                    if (!selectedRole) {
+                        e.preventDefault();
+                        alert('<?php esc_js(_e('Please select a role to sync.', 'wp-cognito-auth')); ?>');
+                        return false;
+                    }
+                }
+            });
+        });
+        </script>
         <?php
     }
 

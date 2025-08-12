@@ -750,3 +750,70 @@
     font-style: normal;
     color: #856404;
 }
+
+/* User sync form improvements */
+.sync-options {
+    margin: 15px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+.sync-options h4 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #23282d;
+}
+
+.sync-options label {
+    display: block;
+    margin-bottom: 10px;
+    font-weight: normal;
+    cursor: pointer;
+}
+
+.sync-options input[type="radio"] {
+    margin-right: 8px;
+}
+
+.sync-options .description {
+    display: block;
+    margin-left: 24px;
+    margin-top: 4px;
+    font-size: 12px;
+    font-style: italic;
+    color: #6c757d;
+    line-height: 1.4;
+}
+
+.sync-options select {
+    width: 200px;
+    padding: 4px 8px;
+}
+
+#role-selection {
+    margin-left: 24px;
+    margin-top: 8px;
+    padding: 8px;
+    background: #ffffff;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+
+/* Form validation styles */
+.form-invalid {
+    border-color: #dc3545 !important;
+    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25) !important;
+}
+
+/* Sync action improvements */
+.sync-action-box .button {
+    margin-top: 15px;
+    min-width: 120px;
+}
+
+.sync-action-box p:last-of-type {
+    margin-bottom: 0;
+}

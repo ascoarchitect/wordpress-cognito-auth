@@ -202,6 +202,21 @@ class API {
             'fields' => 'all'
         ]);
 
+        return $this->process_users_for_sync($users);
+    }
+
+    public function bulk_sync_users_by_role($role) {
+        $users = get_users([
+            'role' => $role,
+            'fields' => 'all'
+        ]);
+
+        $this->log_message('info', sprintf('Starting bulk sync for role: %s. Found %d users.', $role, count($users)));
+
+        return $this->process_users_for_sync($users);
+    }
+
+    private function process_users_for_sync($users) {
         $stats = [
             'processed' => 0,
             'created' => 0,
@@ -241,8 +256,22 @@ class API {
                     $user->ID,
                     $e->getMessage()
                 );
+                $this->log_message('error', sprintf(
+                    'Failed to sync user %s (%d): %s',
+                    $user->user_email,
+                    $user->ID,
+                    $e->getMessage()
+                ));
             }
         }
+
+        $this->log_message('info', sprintf(
+            'Bulk sync completed. Processed: %d, Created: %d, Updated: %d, Failed: %d',
+            $stats['processed'],
+            $stats['created'],
+            $stats['updated'],
+            $stats['failed']
+        ));
 
         return $stats;
     }

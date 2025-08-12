@@ -2,7 +2,7 @@
     "name": "adamscott/wp-cognito-auth",
     "description": "WordPress Cognito Authentication & Sync Plugin",
     "type": "wordpress-plugin",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "license": "GPL-3.0-or-later",
     "authors": [
         {

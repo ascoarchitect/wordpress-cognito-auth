@@ -145,6 +145,21 @@ class Sync {
             'fields' => 'all'
         ]);
 
+        return $this->process_users_for_sync($users);
+    }
+
+    public function bulk_sync_users_by_role($role) {
+        $users = get_users([
+            'role' => $role,
+            'fields' => 'all'
+        ]);
+
+        error_log(sprintf('[Cognito Sync] Starting bulk sync for role: %s. Found %d users.', $role, count($users)));
+
+        return $this->process_users_for_sync($users);
+    }
+
+    private function process_users_for_sync($users) {
         $stats = [
             'processed' => 0,
             'created' => 0,
@@ -184,8 +199,22 @@ class Sync {
                     $user->ID,
                     $e->getMessage()
                 );
+                error_log(sprintf(
+                    '[Cognito Sync] Failed to sync user %s (%d): %s',
+                    $user->user_email,
+                    $user->ID,
+                    $e->getMessage()
+                ));
             }
         }
+
+        error_log(sprintf(
+            '[Cognito Sync] Bulk sync completed. Processed: %d, Created: %d, Updated: %d, Failed: %d',
+            $stats['processed'],
+            $stats['created'],
+            $stats['updated'],
+            $stats['failed']
+        ));
 
         return $stats;
     }
