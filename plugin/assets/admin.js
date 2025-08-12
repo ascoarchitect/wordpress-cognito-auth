@@ -117,10 +117,25 @@
                 }
             },
             error: function(xhr, status, error) {
-                $results.removeClass('loading success').addClass('error').text('Connection failed: ' + error);
+                console.log('AJAX Error Details:', {
+                    status: status,
+                    error: error,
+                    responseText: xhr.responseText,
+                    statusCode: xhr.status,
+                    statusText: xhr.statusText
+                });
+                
+                let errorMessage = 'Connection failed: ' + error;
+                if (xhr.status === 403) {
+                    errorMessage = 'WordPress AJAX access denied (403). This might be due to: security plugin restrictions, WP Engine security settings, or nonce verification failure. Try the form-based test below.';
+                } else if (xhr.status === 0) {
+                    errorMessage = 'Network error or request blocked. Check browser console for details.';
+                }
+                
+                $results.removeClass('loading success').addClass('error').text(errorMessage);
             },
             complete: function() {
-                $button.prop('disabled', false).text('Test Sync Connection');
+                $button.prop('disabled', false).text('Test Sync API Connection (AJAX)');
                 setTimeout(function() {
                     $results.fadeOut();
                 }, 5000);
@@ -596,13 +611,9 @@
         textColor = textColor || '#ffffff';
         text = text || 'Login with Cognito';
         
-        console.log('Updating button preview:', { bgColor, textColor, text }); // Debug log
-        
         // Update preview button directly
         const $preview = $('#login-button-preview');
         if ($preview.length) {
-            console.log('Preview button found, updating...'); // Debug log
-            
             $preview.text(text);
             
             // Calculate hover color (darker version of background)
@@ -632,8 +643,6 @@
                 'cursor': 'pointer'
             });
             
-            console.log('Button styles applied'); // Debug log
-            
             // Add hover effects
             $preview.off('mouseenter mouseleave'); // Remove existing handlers
             $preview.on('mouseenter', function() {
@@ -651,8 +660,6 @@
                     'color': textColor
                 });
             });
-        } else {
-            console.log('Preview button not found!'); // Debug log
         }
     }
     

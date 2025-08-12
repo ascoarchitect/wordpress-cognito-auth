@@ -10,6 +10,7 @@ class Admin {
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
         add_action('admin_post_cognito_bulk_sync', array($this, 'handle_bulk_sync'));
         add_action('admin_post_cognito_test_sync', array($this, 'handle_test_sync'));
+        add_action('admin_post_cognito_sync_test_form', array($this, 'handle_sync_test_form'));
         add_action('admin_post_cognito_toggle_group_sync', array($this, 'handle_toggle_group_sync'));
         add_action('admin_post_cognito_test_group_sync', array($this, 'handle_test_group_sync'));
         add_action('admin_post_cognito_full_group_sync', array($this, 'handle_full_group_sync'));
@@ -19,6 +20,7 @@ class Admin {
         // AJAX handlers
         add_action('wp_ajax_cognito_test_connection', array($this, 'ajax_test_connection'));
         add_action('wp_ajax_cognito_test_sync_connection', array($this, 'ajax_test_sync_connection'));
+        add_action('wp_ajax_cognito_test_wp_http', array($this, 'ajax_test_wp_http'));
     }
 
     public function add_admin_menu() {
@@ -508,7 +510,12 @@ class Admin {
                                value="<?php echo esc_attr(get_option('wp_cognito_sync_api_url')); ?>"
                                class="regular-text"
                                placeholder="https://your-api-gateway.execute-api.region.amazonaws.com/prod">
-                        <p class="description"><?php _e('Lambda/API Gateway URL for user synchronization', 'wp-cognito-auth'); ?></p>
+                        <p class="description">
+                            <?php _e('Lambda/API Gateway URL for user synchronization. Can end with either /sync or just the stage name (e.g., /prod). The plugin will handle the correct endpoint routing.', 'wp-cognito-auth'); ?>
+                            <br>
+                            <strong><?php _e('Example:', 'wp-cognito-auth'); ?></strong>
+                            <code>https://abc123def4.execute-api.us-west-2.amazonaws.com/prod</code>
+                        </p>
                     </td>
                 </tr>
                 <tr>
@@ -540,11 +547,58 @@ class Admin {
             
             <div class="cognito-test-section">
                 <h3><?php _e('Test Sync Connection', 'wp-cognito-auth'); ?></h3>
+                
+                <!-- AJAX Test Button -->
                 <button type="button" id="test-sync-connection" class="button button-secondary">
-                    <?php _e('Test Sync API Connection', 'wp-cognito-auth'); ?>
+                    <?php _e('Test Sync API Connection (AJAX)', 'wp-cognito-auth'); ?>
                 </button>
                 <div id="sync-test-results" style="margin-top: 10px;"></div>
                 
+                <?php if (defined('WP_DEBUG') && WP_DEBUG): ?>
+                <div class="debug-info" style="margin-top: 20px; padding: 15px; background: #f9f9f9; border: 1px solid #ddd;">
+                    <h4><?php _e('Debug Information', 'wp-cognito-auth'); ?></h4>
+                    <?php
+                    if (!$this->api) {
+                        $this->api = new API();
+                    }
+                    $debug_info = $this->api->get_config_debug_info();
+                    ?>
+                    <table class="widefat">
+                        <tbody>
+                            <tr>
+                                <th><?php _e('API URL Setting', 'wp-cognito-auth'); ?></th>
+                                <td><code><?php echo esc_html($debug_info['base_url_setting'] ?: 'Not set'); ?></code></td>
+                            </tr>
+                            <tr>
+                                <th><?php _e('Calculated Base URL', 'wp-cognito-auth'); ?></th>
+                                <td><code><?php echo esc_html($debug_info['calculated_base_url'] ?: 'Not calculated'); ?></code></td>
+                            </tr>
+                            <tr>
+                                <th><?php _e('Test URL', 'wp-cognito-auth'); ?></th>
+                                <td><code><?php echo esc_html($debug_info['test_url'] ?: 'Not available'); ?></code></td>
+                            </tr>
+                            <tr>
+                                <th><?php _e('Sync URL', 'wp-cognito-auth'); ?></th>
+                                <td><code><?php echo esc_html($debug_info['sync_url'] ?: 'Not available'); ?></code></td>
+                            </tr>
+                            <tr>
+                                <th><?php _e('API Key Status', 'wp-cognito-auth'); ?></th>
+                                <td><?php echo $debug_info['api_key_set'] ? '<span style="color: green;">✓ Set</span>' : '<span style="color: red;">✗ Not set</span>'; ?></td>
+                            </tr>
+                            <?php if ($debug_info['api_key_set']): ?>
+                            <tr>
+                                <th><?php _e('API Key Preview', 'wp-cognito-auth'); ?></th>
+                                <td><code><?php echo esc_html($debug_info['api_key_prefix']); ?></code></td>
+                            </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                    <p class="description">
+                        <?php _e('This debug information is only shown when WP_DEBUG is enabled. Check the sync logs below for detailed connection attempt information.', 'wp-cognito-auth'); ?>
+                    </p>
+                </div>
+                <?php endif; ?>
+
                 <p class="description" style="margin-top: 15px;">
                     <?php _e('For group management and bulk synchronization operations, use the dedicated tabs above.', 'wp-cognito-auth'); ?>
                 </p>
@@ -552,6 +606,19 @@ class Admin {
             
             <?php submit_button(); ?>
         </form>
+        
+        <!-- Separate Form-based Test (outside main form to avoid nesting) -->
+        <div class="cognito-test-section" style="margin-top: 20px;">
+            <h3><?php _e('Alternative Test Method', 'wp-cognito-auth'); ?></h3>
+            <p class="description"><?php _e('If the AJAX test above doesn\'t work, try this form-based test:', 'wp-cognito-auth'); ?></p>
+            <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" style="margin-bottom: 20px;">
+                <?php wp_nonce_field('cognito_sync_test_form'); ?>
+                <input type="hidden" name="action" value="cognito_sync_test_form">
+                <button type="submit" class="button button-secondary">
+                    <?php _e('Test Sync API Connection (Form)', 'wp-cognito-auth'); ?>
+                </button>
+            </form>
+        </div>
         <?php
     }
 
@@ -831,10 +898,15 @@ class Admin {
     }
 
     public function ajax_test_sync_connection() {
-        check_ajax_referer('wp_cognito_auth_nonce', 'nonce');
+        // Check nonce - but provide specific error message if it fails
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'wp_cognito_auth_nonce')) {
+            wp_send_json_error('Security check failed. Please refresh the page and try again.');
+            return;
+        }
 
         if (!current_user_can('manage_options')) {
-            wp_die(-1);
+            wp_send_json_error('Insufficient permissions.');
+            return;
         }
 
         // Initialize API if not already done
@@ -1000,6 +1072,24 @@ class Admin {
                     echo '<div class="notice notice-warning is-dismissible"><p>';
                     echo __('Sync is not properly configured. Please check your API settings.', 'wp-cognito-auth');
                     echo '</p></div>';
+                    break;
+                case 'sync_test_success_form':
+                    $result = get_transient('cognito_sync_test_result');
+                    if ($result) {
+                        echo '<div class="notice notice-success is-dismissible"><p>';
+                        echo sprintf(__('Form-based sync test successful: %s', 'wp-cognito-auth'), esc_html($result['message']));
+                        echo '</p></div>';
+                        delete_transient('cognito_sync_test_result');
+                    }
+                    break;
+                case 'sync_test_failed_form':
+                    $result = get_transient('cognito_sync_test_result');
+                    if ($result) {
+                        echo '<div class="notice notice-error is-dismissible"><p>';
+                        echo sprintf(__('Form-based sync test failed: %s', 'wp-cognito-auth'), esc_html($result['message']));
+                        echo '</p></div>';
+                        delete_transient('cognito_sync_test_result');
+                    }
                     break;
             }
         }
@@ -1611,6 +1701,35 @@ define('WP_DEBUG_LOG', true);</code></pre>
             ),
             admin_url('admin.php')
         ));
+        exit;
+    }
+
+    public function handle_sync_test_form() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions', 'wp-cognito-auth'));
+        }
+        
+        check_admin_referer('cognito_sync_test_form');
+        
+        // Initialize API if needed
+        if (!$this->api) {
+            $this->api = new API();
+        }
+        
+        // Run the test
+        $result = $this->api->test_connection();
+        
+        // Set result in transient for display
+        set_transient('cognito_sync_test_result', $result, MINUTE_IN_SECONDS * 5);
+        
+        $message = $result['success'] ? 'sync_test_success_form' : 'sync_test_failed_form';
+        
+        // Redirect back with result
+        wp_redirect(add_query_arg(array(
+            'page' => 'wp-cognito-auth',
+            'tab' => 'sync',
+            'message' => $message
+        ), admin_url('admin.php')));
         exit;
     }
 }
