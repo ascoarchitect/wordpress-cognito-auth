@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: WordPress Cognito Authentication & Sync
- * Plugin URI: https://github.com/yourrepo/wp-cognito-auth
+ * Plugin URI: https://github.com/ascoarchitect/wordpress-cognito-auth
  * Description: Complete WordPress integration with Amazon Cognito - handles authentication via JWT/OIDC and bidirectional user synchronization.
  * Version: 2.1.0
  * Author: Adam Scott
@@ -10,6 +10,7 @@
  * Requires at least: 5.0
  * Requires PHP: 7.2
  * License: GPL v3 or later
+ * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  * Network: false
  */
 
