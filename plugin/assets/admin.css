@@ -541,3 +541,212 @@
     text-shadow: none !important;
     box-shadow: none !important;
 }
+
+/* Group management specific styles */
+.group-sync-info {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.group-sync-info h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #23282d;
+}
+
+.group-sync-info ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.group-sync-info li {
+    margin-bottom: 5px;
+}
+
+.group-sync-info code {
+    background: #f1f1f1;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+}
+
+/* Bulk sync specific styles */
+.cognito-bulk-sync-container {
+    margin-top: 20px;
+}
+
+.cognito-bulk-sync-container .sync-actions {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+}
+
+.cognito-bulk-sync-container .sync-action-box {
+    background: #f9f9f9;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    flex: 1;
+    min-width: 300px;
+}
+
+.cognito-bulk-sync-container .sync-action-box h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #23282d;
+}
+
+.sync-action-box form {
+    margin-top: 15px;
+}
+
+.sync-action-box label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.sync-action-box input[type="radio"] {
+    margin-right: 8px;
+}
+
+.sync-action-box .button {
+    margin-top: 10px;
+}
+
+/* Enhanced table styles for group management */
+.group-management-container .widefat th {
+    background: #f1f1f1;
+    font-weight: 600;
+    padding: 12px;
+    border-bottom: 2px solid #ddd;
+}
+
+.group-management-container .widefat td {
+    padding: 12px;
+    vertical-align: middle;
+    border-bottom: 1px solid #ddd;
+}
+
+.group-management-container .widefat tbody tr:hover {
+    background: #f9f9f9;
+}
+
+.group-management-container .widefat form {
+    margin: 0;
+}
+
+.group-management-container .button {
+    min-width: 100px;
+}
+
+/* Status badges for group management */
+.sync-status.enabled {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+.sync-status.disabled {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+/* Responsive improvements for group table */
+@media (max-width: 1024px) {
+    .group-management-container table,
+    .group-management-container thead,
+    .group-management-container tbody,
+    .group-management-container th,
+    .group-management-container td,
+    .group-management-container tr {
+        display: block;
+    }
+
+    .group-management-container thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+
+    .group-management-container tr {
+        border: 1px solid #ccc;
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 4px;
+        background: #f9f9f9;
+    }
+
+    .group-management-container td {
+        border: none;
+        position: relative;
+        padding-left: 120px !important;
+        padding-bottom: 10px;
+        text-align: left;
+    }
+
+    .group-management-container td:before {
+        content: attr(data-label) ": ";
+        position: absolute;
+        left: 12px;
+        width: 100px;
+        font-weight: bold;
+        text-align: left;
+    }
+}
+
+/* Quick fix for mobile table headers */
+.group-management-container td:nth-child(1):before { content: "WordPress Role"; }
+.group-management-container td:nth-child(2):before { content: "Cognito Group"; }
+.group-management-container td:nth-child(3):before { content: "User Count"; }
+.group-management-container td:nth-child(4):before { content: "Status"; }
+.group-management-container td:nth-child(5):before { content: "Actions"; }
+
+/* Loading states for buttons */
+.button.loading {
+    position: relative;
+    color: transparent !important;
+}
+
+.button.loading:after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #007cba;
+    border-radius: 50%;
+    animation: cognito-spinner 1s linear infinite;
+}
+
+/* Enhanced description styles */
+.description.highlight {
+    background: #fff3cd;
+    padding: 10px;
+    border-left: 4px solid #ffc107;
+    border-radius: 0 4px 4px 0;
+    margin-top: 10px;
+    font-style: normal;
+    color: #856404;
+}

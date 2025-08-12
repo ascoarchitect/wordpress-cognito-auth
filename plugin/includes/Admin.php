@@ -10,8 +10,15 @@ class Admin {
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
         add_action('admin_post_cognito_bulk_sync', array($this, 'handle_bulk_sync'));
         add_action('admin_post_cognito_test_sync', array($this, 'handle_test_sync'));
+        add_action('admin_post_cognito_toggle_group_sync', array($this, 'handle_toggle_group_sync'));
+        add_action('admin_post_cognito_test_group_sync', array($this, 'handle_test_group_sync'));
+        add_action('admin_post_cognito_full_group_sync', array($this, 'handle_full_group_sync'));
         add_action('admin_notices', array($this, 'show_admin_notices'));
         add_action('admin_notices', array($this, 'show_cognito_setup_notices'));
+
+        // AJAX handlers
+        add_action('wp_ajax_cognito_test_connection', array($this, 'ajax_test_connection'));
+        add_action('wp_ajax_cognito_test_sync_connection', array($this, 'ajax_test_sync_connection'));
     }
 
     public function add_admin_menu() {
@@ -109,6 +116,18 @@ class Admin {
                    class="nav-tab <?php echo $active_tab === 'sync' ? 'nav-tab-active' : ''; ?>">
                     <?php _e('Sync Settings', 'wp-cognito-auth'); ?>
                 </a>
+                <a href="?page=wp-cognito-auth&tab=bulk-sync" 
+                   class="nav-tab <?php echo $active_tab === 'bulk-sync' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e('Bulk Sync', 'wp-cognito-auth'); ?>
+                </a>
+                <a href="?page=wp-cognito-auth&tab=groups" 
+                   class="nav-tab <?php echo $active_tab === 'groups' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e('Group Management', 'wp-cognito-auth'); ?>
+                </a>
+                <a href="?page=wp-cognito-auth&tab=logs" 
+                   class="nav-tab <?php echo $active_tab === 'logs' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e('Logs', 'wp-cognito-auth'); ?>
+                </a>
                 <a href="?page=wp-cognito-auth&tab=help" 
                    class="nav-tab <?php echo $active_tab === 'help' ? 'nav-tab-active' : ''; ?>">
                     <?php _e('Setup Guide', 'wp-cognito-auth'); ?>
@@ -123,6 +142,15 @@ class Admin {
                         break;
                     case 'sync':
                         $this->render_sync_settings_tab();
+                        break;
+                    case 'bulk-sync':
+                        $this->render_bulk_sync_tab();
+                        break;
+                    case 'groups':
+                        $this->render_groups_tab();
+                        break;
+                    case 'logs':
+                        $this->render_logs_page();
                         break;
                     case 'help':
                         $this->render_help_tab();
@@ -508,25 +536,6 @@ class Admin {
                         </label>
                     </td>
                 </tr>
-                <tr>
-                    <th scope="row">
-                        <label for="wp_cognito_sync_groups"><?php _e('Synced Groups', 'wp-cognito-auth'); ?></label>
-                    </th>
-                    <td>
-                        <?php
-                        $synced_groups = get_option('wp_cognito_sync_groups', array());
-                        $roles = get_editable_roles();
-                        foreach ($roles as $role_name => $role_info) {
-                            $checked = in_array($role_name, $synced_groups);
-                            echo '<label style="display: block; margin-bottom: 5px;">';
-                            echo '<input type="checkbox" name="wp_cognito_sync_groups[]" value="' . esc_attr($role_name) . '"' . checked($checked, true, false) . '> ';
-                            echo esc_html($role_info['name']) . ' <code>(WP_' . esc_html($role_name) . ')</code>';
-                            echo '</label>';
-                        }
-                        ?>
-                        <p class="description"><?php _e('WordPress roles to sync with Cognito groups (groups will be named WP_rolename)', 'wp-cognito-auth'); ?></p>
-                    </td>
-                </tr>
             </table>
             
             <div class="cognito-test-section">
@@ -535,6 +544,10 @@ class Admin {
                     <?php _e('Test Sync API Connection', 'wp-cognito-auth'); ?>
                 </button>
                 <div id="sync-test-results" style="margin-top: 10px;"></div>
+                
+                <p class="description" style="margin-top: 15px;">
+                    <?php _e('For group management and bulk synchronization operations, use the dedicated tabs above.', 'wp-cognito-auth'); ?>
+                </p>
             </div>
             
             <?php submit_button(); ?>
@@ -768,7 +781,7 @@ class Admin {
     }
 
     public function ajax_test_connection() {
-        check_ajax_referer('wp_cognito_auth_ajax', 'nonce');
+        check_ajax_referer('wp_cognito_auth_nonce', 'nonce');
         
         if (!current_user_can('manage_options')) {
             wp_die(-1);
@@ -795,6 +808,28 @@ class Admin {
         }
         
         wp_send_json_success(__('Connection successful!', 'wp-cognito-auth'));
+    }
+
+    public function ajax_test_sync_connection() {
+        check_ajax_referer('wp_cognito_auth_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(-1);
+        }
+
+        // Initialize API if not already done
+        if (!$this->api) {
+            $this->api = new API();
+        }
+
+        // Use the API's test_connection method
+        $result = $this->api->test_connection();
+
+        if ($result['success']) {
+            wp_send_json_success($result['message']);
+        } else {
+            wp_send_json_error($result['message']);
+        }
     }
 
     /**
@@ -876,6 +911,27 @@ class Admin {
                 echo __('Cognito Authentication is enabled but missing required settings. Please configure: ', 'wp-cognito-auth');
                 echo implode(', ', $missing_settings);
                 echo '</p></div>';
+            }
+        }
+
+        // Show group sync messages
+        if (isset($_GET['message'])) {
+            switch ($_GET['message']) {
+                case 'group_sync_enabled':
+                    echo '<div class="notice notice-success is-dismissible"><p>';
+                    echo __('Group sync enabled and Cognito group created successfully.', 'wp-cognito-auth');
+                    echo '</p></div>';
+                    break;
+                case 'group_sync_disabled':
+                    echo '<div class="notice notice-success is-dismissible"><p>';
+                    echo __('Group sync disabled successfully.', 'wp-cognito-auth');
+                    echo '</p></div>';
+                    break;
+                case 'group_creation_failed':
+                    echo '<div class="notice notice-error is-dismissible"><p>';
+                    echo __('Group sync enabled but failed to create Cognito group. Check the logs for details.', 'wp-cognito-auth');
+                    echo '</p></div>';
+                    break;
             }
         }
     }
@@ -1045,5 +1101,389 @@ define('WP_DEBUG_LOG', true);</code></pre>
             </div>
         </div>
         <?php
+    }
+
+    private function render_bulk_sync_tab() {
+        $features = get_option('wp_cognito_features', array());
+        if (empty($features['sync'])) {
+            echo '<div class="notice notice-warning"><p>' . 
+                 __('User sync feature is not enabled. Please enable it in the Features tab first.', 'wp-cognito-auth') . 
+                 '</p></div>';
+            return;
+        }
+        ?>
+        <div class="cognito-bulk-sync-container">
+            <div class="cognito-card">
+                <h2><?php _e('User Sync Management', 'wp-cognito-auth'); ?></h2>
+                
+                <div class="sync-actions">
+                    <div class="sync-action-box">
+                        <h3><?php _e('Test User Sync', 'wp-cognito-auth'); ?></h3>
+                        <p><?php _e('Preview which users would be created or updated in Cognito without making any changes.', 'wp-cognito-auth'); ?></p>
+                        <form method="post" action="<?php echo admin_url('admin-post.php'); ?>">
+                            <?php wp_nonce_field('cognito_test_sync'); ?>
+                            <input type="hidden" name="action" value="cognito_test_sync">
+                            <button type="submit" class="button button-secondary">
+                                <?php _e('Run Test Sync', 'wp-cognito-auth'); ?>
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <div class="sync-action-box">
+                        <h3><?php _e('Full User Sync', 'wp-cognito-auth'); ?></h3>
+                        <p><?php _e('Synchronize all WordPress users with Cognito. This operation cannot be undone.', 'wp-cognito-auth'); ?></p>
+                        <form method="post" action="<?php echo admin_url('admin-post.php'); ?>">
+                            <?php wp_nonce_field('cognito_bulk_sync'); ?>
+                            <input type="hidden" name="action" value="cognito_bulk_sync">
+                            <label>
+                                <input type="radio" name="sync_direction" value="wp_to_cognito" checked>
+                                <?php _e('WordPress → Cognito', 'wp-cognito-auth'); ?>
+                            </label>
+                            <br>
+                            <label>
+                                <input type="radio" name="user_selection" value="all" checked>
+                                <?php _e('All Users', 'wp-cognito-auth'); ?>
+                            </label>
+                            <button type="submit" class="button button-primary">
+                                <?php _e('Start Full Sync', 'wp-cognito-auth'); ?>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <?php if (!empty($features['group_sync'])): ?>
+            <div class="cognito-card">
+                <h2><?php _e('Group Sync Management', 'wp-cognito-auth'); ?></h2>
+                
+                <div class="sync-actions">
+                    <div class="sync-action-box">
+                        <h3><?php _e('Test Group Sync', 'wp-cognito-auth'); ?></h3>
+                        <p><?php _e('Preview which groups would be created and which memberships would be updated.', 'wp-cognito-auth'); ?></p>
+                        <form method="post" action="<?php echo admin_url('admin-post.php'); ?>">
+                            <?php wp_nonce_field('cognito_test_group_sync'); ?>
+                            <input type="hidden" name="action" value="cognito_test_group_sync">
+                            <button type="submit" class="button button-secondary">
+                                <?php _e('Run Group Test Sync', 'wp-cognito-auth'); ?>
+                            </button>
+                        </form>
+                    </div>
+                    
+                    <div class="sync-action-box">
+                        <h3><?php _e('Full Group Sync', 'wp-cognito-auth'); ?></h3>
+                        <p><?php _e('Create missing groups in Cognito and synchronize all group memberships.', 'wp-cognito-auth'); ?></p>
+                        <form method="post" action="<?php echo admin_url('admin-post.php'); ?>">
+                            <?php wp_nonce_field('cognito_full_group_sync'); ?>
+                            <input type="hidden" name="action" value="cognito_full_group_sync">
+                            <button type="submit" class="button button-primary">
+                                <?php _e('Start Full Group Sync', 'wp-cognito-auth'); ?>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+            
+            <div class="cognito-card">
+                <h2><?php _e('Sync Statistics', 'wp-cognito-auth'); ?></h2>
+                <?php $this->render_sync_stats(); ?>
+            </div>
+        </div>
+        
+        <style>
+            .sync-actions {
+                display: flex;
+                gap: 20px;
+                margin-bottom: 20px;
+            }
+            .sync-action-box {
+                background: #f9f9f9;
+                padding: 20px;
+                border: 1px solid #ccd0d4;
+                border-radius: 4px;
+                flex: 1;
+            }
+            .sync-action-box h3 {
+                margin-top: 0;
+            }
+        </style>
+        <?php
+    }
+
+    private function render_groups_tab() {
+        $features = get_option('wp_cognito_features', array());
+        if (empty($features['group_sync'])) {
+            echo '<div class="notice notice-warning"><p>' . 
+                 __('Group sync feature is not enabled. Please enable it in the Features tab first.', 'wp-cognito-auth') . 
+                 '</p></div>';
+            return;
+        }
+
+        $synced_groups = get_option('wp_cognito_sync_groups', array());
+        if (!is_array($synced_groups)) {
+            $synced_groups = array();
+            update_option('wp_cognito_sync_groups', $synced_groups);
+        }
+        
+        $groups = get_editable_roles();
+        ?>
+        <div class="group-management-container">
+            <div class="cognito-card">
+                <h2><?php _e('Group Synchronization Management', 'wp-cognito-auth'); ?></h2>
+                <p class="description">
+                    <?php _e('Select which WordPress roles should be synchronized with Cognito groups. When you enable sync for a role, the corresponding Cognito group will be created automatically.', 'wp-cognito-auth'); ?>
+                </p>
+
+                <table class="widefat">
+                    <thead>
+                        <tr>
+                            <th><?php _e('WordPress Role', 'wp-cognito-auth'); ?></th>
+                            <th><?php _e('Cognito Group Name', 'wp-cognito-auth'); ?></th>
+                            <th><?php _e('User Count', 'wp-cognito-auth'); ?></th>
+                            <th><?php _e('Sync Status', 'wp-cognito-auth'); ?></th>
+                            <th><?php _e('Actions', 'wp-cognito-auth'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($groups as $role_name => $role_info): ?>
+                            <?php 
+                            $user_count = count(get_users(['role' => $role_name]));
+                            $is_synced = in_array($role_name, $synced_groups);
+                            ?>
+                            <tr>
+                                <td>
+                                    <strong><?php echo esc_html($role_info['name']); ?></strong>
+                                    <br>
+                                    <code><?php echo esc_html($role_name); ?></code>
+                                </td>
+                                <td><code>WP_<?php echo esc_html($role_name); ?></code></td>
+                                <td><?php echo $user_count; ?> <?php _e('users', 'wp-cognito-auth'); ?></td>
+                                <td>
+                                    <?php if ($is_synced): ?>
+                                        <span class="sync-status enabled"><?php _e('Enabled', 'wp-cognito-auth'); ?></span>
+                                    <?php else: ?>
+                                        <span class="sync-status disabled"><?php _e('Disabled', 'wp-cognito-auth'); ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" style="display:inline;">
+                                        <?php wp_nonce_field('cognito_group_sync'); ?>
+                                        <input type="hidden" name="action" value="cognito_toggle_group_sync">
+                                        <input type="hidden" name="group_id" value="<?php echo esc_attr($role_name); ?>">
+                                        <input type="hidden" name="enabled" value="<?php echo $is_synced ? '0' : '1'; ?>">
+                                        <button type="submit" class="button <?php echo $is_synced ? 'button-secondary' : 'button-primary'; ?>">
+                                            <?php echo $is_synced ? 
+                                                __('Disable Sync', 'wp-cognito-auth') : 
+                                                __('Enable Sync', 'wp-cognito-auth'); ?>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+
+                <?php if (!empty($synced_groups)): ?>
+                    <div class="group-sync-info">
+                        <h3><?php _e('Currently Synced Groups', 'wp-cognito-auth'); ?></h3>
+                        <p><?php printf(__('You have %d WordPress roles configured for sync with Cognito groups:', 'wp-cognito-auth'), count($synced_groups)); ?></p>
+                        <ul>
+                            <?php foreach ($synced_groups as $group_name): ?>
+                                <li><code>WP_<?php echo esc_html($group_name); ?></code> (<?php echo esc_html($groups[$group_name]['name']); ?>)</li>
+                            <?php endforeach; ?>
+                        </ul>
+                        <p class="description">
+                            <?php _e('Users are automatically added to/removed from these Cognito groups based on their WordPress role when sync occurs.', 'wp-cognito-auth'); ?>
+                        </p>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+        
+        <style>
+            .sync-status {
+                padding: 3px 8px;
+                border-radius: 3px;
+                font-size: 12px;
+                font-weight: bold;
+                text-transform: uppercase;
+            }
+            .sync-status.enabled {
+                background-color: #d4edda;
+                color: #155724;
+            }
+            .sync-status.disabled {
+                background-color: #f8d7da;
+                color: #721c24;
+            }
+            .group-sync-info {
+                margin-top: 20px;
+                padding: 15px;
+                background: #f9f9f9;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }
+        </style>
+        <?php
+    }
+
+    public function handle_toggle_group_sync() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions', 'wp-cognito-auth'));
+        }
+
+        check_admin_referer('cognito_group_sync');
+
+        $group_name = sanitize_key($_POST['group_id']);
+        $enabled = isset($_POST['enabled']) && $_POST['enabled'] === '1';
+
+        // Validate against actual WordPress roles
+        $roles = get_editable_roles();
+        if (!array_key_exists($group_name, $roles)) {
+            wp_die(__('Invalid role specified', 'wp-cognito-auth'));
+        }
+
+        $synced_groups = get_option('wp_cognito_sync_groups', array());
+        if (!is_array($synced_groups)) {
+            $synced_groups = array();
+        }
+
+        if ($enabled) {
+            if (!in_array($group_name, $synced_groups)) {
+                $synced_groups[] = $group_name;
+                
+                // Initialize API and Sync
+                if (!$this->api) {
+                    $this->api = new API();
+                }
+                
+                try {
+                    // Create the group in Cognito
+                    $this->api->create_group($group_name);
+                    $message = 'group_sync_enabled';
+                } catch (\Exception $e) {
+                    // Log the error but still enable sync locally
+                    if ($this->api) {
+                        $this->api->log_message("Failed to create group {$group_name}: " . $e->getMessage(), 'error');
+                    }
+                    $message = 'group_creation_failed';
+                }
+            }
+        } else {
+            $synced_groups = array_diff($synced_groups, array($group_name));
+            $message = 'group_sync_disabled';
+        }
+
+        $synced_groups = array_values(array_filter($synced_groups));
+        update_option('wp_cognito_sync_groups', $synced_groups);
+
+        wp_redirect(add_query_arg(
+            array(
+                'page' => 'wp-cognito-auth',
+                'tab' => 'groups',
+                'updated' => '1',
+                'message' => $message
+            ), 
+            admin_url('admin.php')
+        ));
+        exit;
+    }
+
+    public function handle_test_group_sync() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions', 'wp-cognito-auth'));
+        }
+
+        check_admin_referer('cognito_test_group_sync');
+
+        $stats = array(
+            'total' => 0,
+            'to_create' => 0,
+            'memberships_to_update' => 0,
+            'groups' => array(),
+            'timestamp' => current_time('mysql')
+        );
+
+        $synced_groups = get_option('wp_cognito_sync_groups', array());
+        foreach ($synced_groups as $group_name) {
+            $stats['total']++;
+            $users_in_role = get_users(['role' => $group_name]);
+            $member_count = count($users_in_role);
+
+            $stats['groups'][] = array(
+                'name' => "WP_{$group_name}",
+                'action' => 'create_if_needed',
+                'members_to_update' => $member_count
+            );
+
+            $stats['to_create']++;
+            $stats['memberships_to_update'] += $member_count;
+        }
+
+        set_transient('cognito_sync_group_test_results', $stats, HOUR_IN_SECONDS);
+
+        wp_redirect(add_query_arg(
+            array(
+                'page' => 'wp-cognito-auth',
+                'tab' => 'bulk-sync',
+                'group-test-complete' => '1'
+            ),
+            admin_url('admin.php')
+        ));
+        exit;
+    }
+
+    public function handle_full_group_sync() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions', 'wp-cognito-auth'));
+        }
+
+        check_admin_referer('cognito_full_group_sync');
+
+        // Initialize API and Sync if not already done
+        if (!$this->api) {
+            $this->api = new API();
+        }
+        
+        // Use Sync class for proper group synchronization
+        $sync = new \WP_Cognito_Auth\Sync($this->api);
+        $stats = $sync->sync_groups();
+
+        // Also sync user group memberships
+        $synced_groups = get_option('wp_cognito_sync_groups', array());
+        $membership_stats = [
+            'memberships_updated' => 0,
+            'memberships_failed' => 0
+        ];
+
+        foreach ($synced_groups as $group_name) {
+            $users = get_users(['role' => $group_name]);
+            foreach ($users as $user) {
+                $cognito_id = get_user_meta($user->ID, 'cognito_user_id', true);
+                if (!empty($cognito_id)) {
+                    if ($this->api->update_group_membership($cognito_id, $group_name, 'add')) {
+                        $membership_stats['memberships_updated']++;
+                    } else {
+                        $membership_stats['memberships_failed']++;
+                    }
+                }
+            }
+        }
+
+        // Merge stats
+        $final_stats = array_merge($stats, $membership_stats);
+        $final_stats['timestamp'] = current_time('mysql');
+
+        set_transient('cognito_sync_group_results', $final_stats, HOUR_IN_SECONDS);
+
+        wp_redirect(add_query_arg(
+            array(
+                'page' => 'wp-cognito-auth',
+                'tab' => 'bulk-sync',
+                'group-sync-complete' => '1'
+            ),
+            admin_url('admin.php')
+        ));
+        exit;
     }
 }

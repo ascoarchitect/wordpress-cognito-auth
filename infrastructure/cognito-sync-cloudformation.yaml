@@ -448,6 +448,14 @@ Resources:
       ParentId: !GetAtt ApiGateway.RootResourceId
       PathPart: sync
 
+  # API Gateway Test Resource
+  ApiTestResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: test
+
   # API Gateway Method
   ApiMethod:
     Type: AWS::ApiGateway::Method
@@ -462,10 +470,42 @@ Resources:
         IntegrationHttpMethod: POST
         Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunction.Arn}/invocations
 
+  # API Gateway Test Method
+  ApiTestMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiTestResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      ApiKeyRequired: true
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates:
+              application/json: |
+                {
+                  "message": "API connection test successful",
+                  "timestamp": "$context.requestTime",
+                  "status": "ok"
+                }
+        RequestTemplates:
+          application/json: |
+            {
+              "statusCode": 200
+            }
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+
   # API Gateway Stage
   ApiStage:
     Type: AWS::ApiGateway::Stage
-    DependsOn: ApiMethod
+    DependsOn:
+      - ApiMethod
+      - ApiTestMethod
     Properties:
       DeploymentId: !Ref ApiDeployment
       RestApiId: !Ref ApiGateway
@@ -476,6 +516,7 @@ Resources:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - ApiMethod
+      - ApiTestMethod
     Properties:
       RestApiId: !Ref ApiGateway
       Description: Deployment for WordPress Cognito sync API
@@ -534,6 +575,10 @@ Outputs:
   ApiEndpoint:
     Description: API Gateway endpoint URL
     Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/sync
+
+  ApiTestEndpoint:
+    Description: API Gateway test endpoint URL
+    Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/test
 
   ApiKey:
     Description: API Key (use 'aws apigateway get-api-key --api-key [key-id]

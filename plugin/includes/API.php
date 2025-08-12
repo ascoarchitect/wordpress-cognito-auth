@@ -5,7 +5,7 @@ class API {
     const LOG_OPTION = 'wp_cognito_sync_logs';
     const MAX_LOGS = 100;
 
-    private function log_message($message, $level = 'info') {
+    public function log_message($message, $level = 'info') {
         $logs = get_option(self::LOG_OPTION, []);
         
         array_unshift($logs, [
@@ -137,33 +137,62 @@ class API {
     }
 
     public function test_connection() {
-        $api_url = rtrim(get_option('wp_cognito_sync_api_url'), '/') . '/sync';
+        $api_url = rtrim(get_option('wp_cognito_sync_api_url'), '/') . '/test';
         $api_key = get_option('wp_cognito_sync_api_key');
 
         if (empty($api_url) || empty($api_key)) {
             return ['success' => false, 'message' => __('API URL and Key are required', 'wp-cognito-auth')];
         }
 
-        $response = wp_remote_post($api_url, [
+        // Log the request details for debugging
+        $this->log_message("Testing connection to: {$api_url}");
+        $this->log_message("Using API key: " . substr($api_key, 0, 8) . "...");
+
+        // Use GET request to the /test endpoint which returns a simple 200 response
+        $response = wp_remote_get($api_url, [
             'headers' => [
-                'Content-Type' => 'application/json',
                 'x-api-key' => $api_key
             ],
-            'body' => json_encode(['action' => 'test']),
-            'timeout' => 10
+            'timeout' => 15
         ]);
 
+        // Log the raw response for debugging
         if (is_wp_error($response)) {
-            return ['success' => false, 'message' => $response->get_error_message()];
+            $error_message = $response->get_error_message();
+            $this->log_message("WordPress HTTP Error: {$error_message}", 'error');
+            return ['success' => false, 'message' => $error_message];
         }
 
         $http_code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+
+        $this->log_message("Response HTTP Code: {$http_code}");
+        $this->log_message("Response Body: {$body}");
         
         if ($http_code === 200) {
-            return ['success' => true, 'message' => __('Connection successful!', 'wp-cognito-auth')];
+            $decoded = json_decode($body, true);
+            $message = isset($decoded['message']) ? $decoded['message'] : __('Connection successful!', 'wp-cognito-auth');
+            $this->log_message("Connection test successful: {$message}");
+            return ['success' => true, 'message' => $message];
         } else {
-            return ['success' => false, 'message' => __('Connection failed. Check your API URL and key.', 'wp-cognito-auth')];
+            $error_msg = sprintf(__('Connection failed. HTTP %d: %s', 'wp-cognito-auth'), $http_code, $body);
+            $this->log_message("Connection test failed: {$error_msg}", 'error');
+            return ['success' => false, 'message' => $error_msg];
         }
+    }
+
+    public function get_config_debug_info() {
+        $api_url = get_option('wp_cognito_sync_api_url');
+        $api_key = get_option('wp_cognito_sync_api_key');
+
+        return [
+            'base_url' => $api_url,
+            'test_url' => rtrim($api_url, '/') . '/test',
+            'sync_url' => rtrim($api_url, '/') . '/sync',
+            'api_key_set' => !empty($api_key),
+            'api_key_length' => strlen($api_key),
+            'api_key_prefix' => !empty($api_key) ? substr($api_key, 0, 8) . '...' : 'Not set'
+        ];
     }
 
     public function bulk_sync_users($limit = 20, $offset = 0) {
