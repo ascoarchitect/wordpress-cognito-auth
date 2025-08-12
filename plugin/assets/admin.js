@@ -13,29 +13,29 @@
     function initCognitoAdmin() {
         // Test connection functionality
         $('#test-cognito-connection').on('click', testCognitoConnection);
-        
+
         // Test sync connection
         $('#test-sync-connection').on('click', testSyncConnection);
-        
+
         // Bulk sync functionality
         $('.cognito-bulk-sync').on('click', handleBulkSync);
-        
+
         // User sync functionality
         $('.cognito-user-sync').on('click', handleUserSync);
-        
+
         // Clear logs functionality
         $('.cognito-clear-logs').on('click', handleClearLogs);
-        
+
         // Real-time sync progress
         if ($('.sync-progress').length) {
             pollSyncProgress();
         }
-        
+
         // Auto-refresh logs
         if ($('.logs-auto-refresh').is(':checked')) {
             startLogAutoRefresh();
         }
-        
+
         $('.logs-auto-refresh').on('change', function() {
             if ($(this).is(':checked')) {
                 startLogAutoRefresh();
@@ -43,15 +43,15 @@
                 stopLogAutoRefresh();
             }
         });
-        
+
         // Feature dependency warnings
         checkFeatureDependencies();
         $('input[name^="wp_cognito_features"]').on('change', checkFeatureDependencies);
-        
+
         // Dynamic form validation
         validateCognitoSettings();
         $('.cognito-setting').on('input', validateCognitoSettings);
-        
+
         // Color picker functionality for login button
         initColorPicker();
     }
@@ -62,10 +62,10 @@
     function testCognitoConnection() {
         const $button = $(this);
         const $results = $('#test-results');
-        
+
         $button.prop('disabled', true).text('Testing...');
         $results.removeClass('success error').addClass('loading').text('Testing connection...').show();
-        
+
         $.ajax({
             url: wpCognitoAuth.ajaxUrl,
             type: 'POST',
@@ -98,10 +98,10 @@
     function testSyncConnection() {
         const $button = $(this);
         const $results = $('#sync-test-results');
-        
+
         $button.prop('disabled', true).text('Testing...');
         $results.removeClass('success error').addClass('loading').text('Testing sync connection...').show();
-        
+
         $.ajax({
             url: wpCognitoAuth.ajaxUrl,
             type: 'POST',
@@ -124,14 +124,14 @@
                     statusCode: xhr.status,
                     statusText: xhr.statusText
                 });
-                
+
                 let errorMessage = 'Connection failed: ' + error;
                 if (xhr.status === 403) {
                     errorMessage = 'WordPress AJAX access denied (403). This might be due to: security plugin restrictions, WP Engine security settings, or nonce verification failure. Try the form-based test below.';
                 } else if (xhr.status === 0) {
                     errorMessage = 'Network error or request blocked. Check browser console for details.';
                 }
-                
+
                 $results.removeClass('loading success').addClass('error').text(errorMessage);
             },
             complete: function() {
@@ -151,15 +151,15 @@
         const syncType = $button.data('sync-type');
         const $progress = $('.sync-progress-' + syncType);
         const $results = $('.sync-results-' + syncType);
-        
+
         if (!confirm('Are you sure you want to start a bulk sync? This may take several minutes.')) {
             return;
         }
-        
+
         $button.prop('disabled', true).text('Syncing...');
         $progress.show();
         $results.hide();
-        
+
         startBulkSync(syncType, 0);
     }
 
@@ -179,7 +179,7 @@
             success: function(response) {
                 if (response.success) {
                     updateSyncProgress(syncType, response.data);
-                    
+
                     if (response.data.continue) {
                         // Continue with next batch
                         startBulkSync(syncType, response.data.next_offset);
@@ -204,7 +204,7 @@
         const $progress = $('.sync-progress-' + syncType);
         const $bar = $progress.find('.progress');
         const $text = $progress.find('.progress-text');
-        
+
         if (data.percentage !== undefined) {
             $bar.css('width', data.percentage + '%');
             $text.text(`${data.processed} of ${data.total} processed (${data.percentage}%)`);
@@ -218,10 +218,10 @@
         const $button = $('.cognito-bulk-sync[data-sync-type="' + syncType + '"]');
         const $progress = $('.sync-progress-' + syncType);
         const $results = $('.sync-results-' + syncType);
-        
+
         $button.prop('disabled', false).text('Start ' + syncType.charAt(0).toUpperCase() + syncType.slice(1) + ' Sync');
         $progress.hide();
-        
+
         // Show results
         let resultsHtml = '<h3>Sync Complete</h3>';
         resultsHtml += '<table class="widefat"><tbody>';
@@ -229,7 +229,7 @@
         resultsHtml += `<tr><th>Successful</th><td>${data.successful || 0}</td></tr>`;
         resultsHtml += `<tr><th>Failed</th><td>${data.failed || 0}</td></tr>`;
         resultsHtml += '</tbody></table>';
-        
+
         if (data.errors && data.errors.length) {
             resultsHtml += '<h4>Errors:</h4><ul>';
             data.errors.forEach(function(error) {
@@ -237,7 +237,7 @@
             });
             resultsHtml += '</ul>';
         }
-        
+
         $results.html(resultsHtml).show();
     }
 
@@ -248,10 +248,10 @@
         const $button = $('.cognito-bulk-sync[data-sync-type="' + syncType + '"]');
         const $progress = $('.sync-progress-' + syncType);
         const $results = $('.sync-results-' + syncType);
-        
+
         $button.prop('disabled', false).text('Start ' + syncType.charAt(0).toUpperCase() + syncType.slice(1) + ' Sync');
         $progress.hide();
-        
+
         $results.html('<div class="notice notice-error"><p>Sync failed: ' + escapeHtml(error) + '</p></div>').show();
     }
 
@@ -262,10 +262,10 @@
         const $button = $(this);
         const userId = $button.data('user-id');
         const $result = $('#sync-result-' + userId);
-        
+
         $button.prop('disabled', true).text('Syncing...');
         $result.html('<em>Syncing user...</em>');
-        
+
         $.ajax({
             url: wpCognitoAuth.ajaxUrl,
             type: 'POST',
@@ -300,10 +300,10 @@
         if (!confirm('Are you sure you want to clear all logs?')) {
             return;
         }
-        
+
         const $button = $(this);
         $button.prop('disabled', true).text('Clearing...');
-        
+
         $.ajax({
             url: wpCognitoAuth.ajaxUrl,
             type: 'POST',
@@ -352,7 +352,7 @@
      * Start auto-refreshing logs
      */
     let logRefreshInterval;
-    
+
     function startLogAutoRefresh() {
         logRefreshInterval = setInterval(function() {
             refreshLogs();
@@ -373,7 +373,7 @@
      */
     function refreshLogs() {
         const $logsContainer = $('.logs-container');
-        
+
         $.ajax({
             url: wpCognitoAuth.ajaxUrl,
             type: 'POST',
@@ -396,17 +396,17 @@
         const authEnabled = $('input[name="wp_cognito_features[authentication]"]').is(':checked');
         const syncEnabled = $('input[name="wp_cognito_features[sync]"]').is(':checked');
         const groupSyncEnabled = $('input[name="wp_cognito_features[group_sync]"]').is(':checked');
-        
+
         // Clear existing warnings
         $('.dependency-warning').remove();
-        
+
         // Group sync requires sync to be enabled
         if (groupSyncEnabled && !syncEnabled) {
             $('input[name="wp_cognito_features[group_sync]"]').closest('td').append(
                 '<p class="dependency-warning" style="color: #dc3232; font-style: italic;">⚠ Group sync requires User Sync to be enabled</p>'
             );
         }
-        
+
         // Show info about feature combinations
         if (authEnabled && !syncEnabled) {
             $('input[name="wp_cognito_features[authentication]"]').closest('td').append(
@@ -423,24 +423,24 @@
         const clientId = $('#wp_cognito_auth_client_id').val();
         const region = $('#wp_cognito_auth_region').val();
         const domain = $('#wp_cognito_auth_hosted_ui_domain').val();
-        
+
         // Clear existing validation
         $('.validation-error').remove();
-        
+
         // Validate User Pool ID format
         if (userPoolId && !/^[a-z0-9-]+_[a-zA-Z0-9]+$/.test(userPoolId)) {
             $('#wp_cognito_auth_user_pool_id').after(
                 '<p class="validation-error" style="color: #dc3232; font-size: 12px;">⚠ Invalid User Pool ID format</p>'
             );
         }
-        
+
         // Validate domain format
         if (domain && !/^[a-z0-9-]+\.auth\.[a-z0-9-]+\.amazoncognito\.com$/.test(domain)) {
             $('#wp_cognito_auth_hosted_ui_domain').after(
                 '<p class="validation-error" style="color: #dc3232; font-size: 12px;">⚠ Invalid hosted UI domain format</p>'
             );
         }
-        
+
         // Enable/disable test button
         const canTest = userPoolId && clientId && region && domain;
         $('#test-cognito-connection').prop('disabled', !canTest);
@@ -480,7 +480,7 @@
     function showNotification(message, type = 'info') {
         const $notification = $('<div class="cognito-notice notice-' + type + '">' + message + '</div>');
         $('.wrap h1').after($notification);
-        
+
         setTimeout(function() {
             $notification.fadeOut(function() {
                 $(this).remove();
@@ -495,7 +495,7 @@
         const tab = window.location.hash.substring(1);
         $('.nav-tab[href*="tab=' + tab + '"]').click();
     }
-    
+
     $('.nav-tab').on('click', function() {
         const href = $(this).attr('href');
         const tab = href.substring(href.indexOf('tab=') + 4);
@@ -532,7 +532,7 @@
         const $textColorText = $('#wp_cognito_auth_login_button_text_color_text');
         const $textInput = $('#wp_cognito_auth_login_button_text');
         const $preview = $('#login-button-preview');
-        
+
         // Handle background color picker
         if ($colorInput.length && $colorText.length) {
             // Update text field when color picker changes
@@ -541,7 +541,7 @@
                 $colorText.val(color);
                 updateLoginButtonPreview($colorInput.val(), $textColorInput.val(), $textInput.val());
             });
-            
+
             // Allow manual text input (remove readonly and add validation)
             $colorText.prop('readonly', false);
             $colorText.on('input', function() {
@@ -556,7 +556,7 @@
                 }
             });
         }
-        
+
         // Handle text color picker
         if ($textColorInput.length && $textColorText.length) {
             // Update text field when color picker changes
@@ -565,7 +565,7 @@
                 $textColorText.val(color);
                 updateLoginButtonPreview($colorInput.val(), color, $textInput.val());
             });
-            
+
             // Allow manual text input (remove readonly and add validation)
             $textColorText.prop('readonly', false);
             $textColorText.on('input', function() {
@@ -580,7 +580,7 @@
                 }
             });
         }
-        
+
         // Update preview when button text changes
         if ($textInput.length && $preview.length) {
             $textInput.on('input', function() {
@@ -589,20 +589,20 @@
                 updateLoginButtonPreview($colorInput.val(), $textColorInput.val(), text);
             });
         }
-        
+
         // Initial preview setup
         if ($preview.length) {
             // Force initial preview update with a slight delay to ensure DOM is ready
             setTimeout(function() {
                 updateLoginButtonPreview(
-                    $colorInput.val() || '#ff9900', 
-                    $textColorInput.val() || '#ffffff', 
+                    $colorInput.val() || '#ff9900',
+                    $textColorInput.val() || '#ffffff',
                     $textInput.val() || 'Login with Cognito'
                 );
             }, 100);
         }
     }
-    
+
     /**
      * Update login button preview
      */
@@ -610,15 +610,15 @@
         bgColor = bgColor || '#ff9900';
         textColor = textColor || '#ffffff';
         text = text || 'Login with Cognito';
-        
+
         // Update preview button directly
         const $preview = $('#login-button-preview');
         if ($preview.length) {
             $preview.text(text);
-            
+
             // Calculate hover color (darker version of background)
             const hoverBgColor = darkenColor(bgColor, 20);
-            
+
             // Apply styles directly to the element
             $preview.css({
                 'background': bgColor,
@@ -642,7 +642,7 @@
                 'width': 'auto',
                 'cursor': 'pointer'
             });
-            
+
             // Add hover effects
             $preview.off('mouseenter mouseleave'); // Remove existing handlers
             $preview.on('mouseenter', function() {
@@ -662,25 +662,25 @@
             });
         }
     }
-    
+
     /**
      * Darken a hex color by a percentage
      */
     function darkenColor(color, percent) {
         // Remove # if present
         color = color.replace('#', '');
-        
+
         // Parse RGB values
         const r = parseInt(color.substr(0, 2), 16);
         const g = parseInt(color.substr(2, 2), 16);
         const b = parseInt(color.substr(4, 2), 16);
-        
+
         // Darken by percentage
         const factor = (100 - percent) / 100;
         const newR = Math.round(r * factor);
         const newG = Math.round(g * factor);
         const newB = Math.round(b * factor);
-        
+
         // Convert back to hex
         return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
     }

@@ -7,13 +7,13 @@ class API {
 
     public function log_message($message, $level = 'info') {
         $logs = get_option(self::LOG_OPTION, []);
-        
+
         array_unshift($logs, [
             'timestamp' => current_time('mysql'),
             'message' => $message,
             'level' => $level
         ]);
-        
+
         $logs = array_slice($logs, 0, self::MAX_LOGS);
         update_option(self::LOG_OPTION, $logs);
     }
@@ -87,12 +87,12 @@ class API {
 
     public function create_user($user_data) {
         $this->log_message("Creating user in Cognito: {$user_data['email']}");
-        
+
         $result = $this->send_to_lambda('create', ['user' => $user_data]);
-        
+
         if ($result && isset($user_data['wp_user_id'])) {
-            $cognito_user_id = is_array($result) && isset($result['result']['User']['Username']) 
-                ? $result['result']['User']['Username'] 
+            $cognito_user_id = is_array($result) && isset($result['result']['User']['Username'])
+                ? $result['result']['User']['Username']
                 : $user_data['email'];
             update_user_meta($user_data['wp_user_id'], 'cognito_user_id', $cognito_user_id);
             $this->log_message("Updated Cognito User ID: {$cognito_user_id} for WordPress user: {$user_data['wp_user_id']}");
@@ -113,7 +113,7 @@ class API {
 
     public function create_group($group_name, $description = '') {
         $this->log_message("Creating group in Cognito: WP_{$group_name}");
-        
+
         return $this->send_api_request([
             'action' => 'create_group',
             'group' => [
@@ -125,7 +125,7 @@ class API {
 
     public function update_group_membership($cognito_user_id, $group_name, $operation = 'add') {
         $this->log_message("Syncing group membership for user {$cognito_user_id} in group WP_{$group_name}: {$operation}");
-        
+
         return $this->send_api_request([
             'action' => 'update_group_membership',
             'group' => [
@@ -190,7 +190,7 @@ class API {
         $body = wp_remote_retrieve_body($response);
 
         $this->log_message("Response HTTP Code: {$http_code}");
-        
+
         if ($http_code === 200) {
             $decoded = json_decode($body, true);
             if (json_last_error() === JSON_ERROR_NONE && isset($decoded['message'])) {
@@ -258,10 +258,10 @@ class API {
      */
     public function test_wp_http_functionality() {
         $results = [];
-        
+
         // Test 1: Basic HTTP GET to a simple endpoint
         $simple_response = wp_remote_get('https://httpbin.org/get', ['timeout' => 10]);
-        
+
         if (is_wp_error($simple_response)) {
             $results['basic_http'] = [
                 'success' => false,
@@ -274,10 +274,10 @@ class API {
                 'message' => $code === 200 ? 'Basic HTTP working' : "Basic HTTP returned code: {$code}"
             ];
         }
-        
+
         // Test 2: SSL/TLS test to AWS
         $aws_response = wp_remote_get('https://aws.amazon.com/', ['timeout' => 10]);
-        
+
         if (is_wp_error($aws_response)) {
             $results['aws_ssl'] = [
                 'success' => false,
@@ -290,7 +290,7 @@ class API {
                 'message' => $code === 200 ? 'AWS HTTPS working' : "AWS HTTPS returned code: {$code}"
             ];
         }
-        
+
         // Test 3: Check WordPress HTTP transport methods
         $transports = [];
         if (function_exists('curl_version')) {
@@ -302,12 +302,12 @@ class API {
         if (function_exists('fopen') && ini_get('allow_url_fopen')) {
             $transports[] = 'fopen';
         }
-        
+
         $results['transports'] = [
             'success' => !empty($transports),
             'message' => 'Available transports: ' . implode(', ', $transports)
         ];
-        
+
         // Test 4: Check for any HTTP filters that might interfere
         $http_filters = [];
         if (has_filter('pre_http_request')) {
@@ -319,12 +319,12 @@ class API {
         if (has_filter('http_api_curl')) {
             $http_filters[] = 'http_api_curl';
         }
-        
+
         $results['filters'] = [
             'success' => true,
             'message' => empty($http_filters) ? 'No HTTP filters detected' : 'HTTP filters present: ' . implode(', ', $http_filters)
         ];
-        
+
         // Test 5: Direct test to your API Gateway base
         $base_api_url = get_option('wp_cognito_sync_api_url');
         if (!empty($base_api_url)) {
@@ -332,10 +332,10 @@ class API {
             if (substr($base_url, -5) === '/sync') {
                 $base_url = substr($base_url, 0, -5);
             }
-            
+
             // Just test the base API Gateway URL without any API key
             $api_response = wp_remote_get($base_url, ['timeout' => 10]);
-            
+
             if (is_wp_error($api_response)) {
                 $results['api_base'] = [
                     'success' => false,
@@ -349,7 +349,7 @@ class API {
                 ];
             }
         }
-        
+
         return $results;
     }
 
@@ -449,11 +449,11 @@ class API {
 
         foreach ($users as $user) {
             $stats['processed']++;
-            
+
             try {
                 $cognito_id = get_user_meta($user->ID, 'cognito_user_id', true);
                 $user_data = $this->prepare_user_data($user->ID, $user);
-                
+
                 if (empty($cognito_id)) {
                     $result = $this->create_user($user_data);
                     if ($result) {
