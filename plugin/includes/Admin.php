@@ -1231,6 +1231,8 @@ class Admin {
 					<li><?php _e( 'Maps Cognito groups to WordPress roles', 'wp-cognito-auth' ); ?></li>
 					<li><?php _e( 'Syncs user profile information', 'wp-cognito-auth' ); ?></li>
 					<li><?php _e( 'Custom field mapping support', 'wp-cognito-auth' ); ?></li>
+					<li><?php _e( 'Automatic real-time role synchronization when users are added/removed to WordPress roles', 'wp-cognito-auth' ); ?></li>
+					<li><?php _e( 'Supports both primary role changes (set_user_role) and secondary role changes (add_user_role/remove_user_role)', 'wp-cognito-auth' ); ?></li>
 				</ul>
 
 				<h4><?php _e( 'Content Restriction', 'wp-cognito-auth' ); ?></h4>
@@ -1294,7 +1296,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 				<p><?php _e( 'For additional support and documentation:', 'wp-cognito-auth' ); ?></p>
 				<ul>
 					<li><a href="https://docs.aws.amazon.com/cognito/" target="_blank"><?php _e( 'AWS Cognito Documentation', 'wp-cognito-auth' ); ?></a></li>
-					<li><?php _e( 'Plugin version:', 'wp-cognito-auth' ); ?> <strong>2.3.0</strong></li>
+					<li><?php _e( 'Plugin version:', 'wp-cognito-auth' ); ?> <strong>2.3.1</strong></li>
 				</ul>
 			</div>
 		</div>
@@ -1487,7 +1489,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 			<div class="cognito-card">
 				<h2><?php _e( 'Group Synchronization Management', 'wp-cognito-auth' ); ?></h2>
 				<p class="description">
-					<?php _e( 'Select which WordPress roles should be synchronized with Cognito groups. When you enable sync for a role, the corresponding Cognito group will be created automatically.', 'wp-cognito-auth' ); ?>
+					<?php _e( 'Select which WordPress roles should be synchronized with Cognito groups. When you enable sync for a role, the corresponding Cognito group will be created automatically. Role changes are synchronized immediately when users are added to or removed from WordPress roles.', 'wp-cognito-auth' ); ?>
 				</p>
 
 				<table class="widefat">

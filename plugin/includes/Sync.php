@@ -94,6 +94,37 @@ class Sync {
 			return;
 		}
 
+		$this->api->log_message( "Role change detected for user ID {$user_id}: new role = {$new_role}" );
+		$this->sync_user_groups( $user_id );
+	}
+
+	public function on_user_role_added( $user_id, $role ) {
+		$features = get_option( 'wp_cognito_features', array() );
+		if ( empty( $features['group_sync'] ) ) {
+			return;
+		}
+
+		$user = get_user_by( 'id', $user_id );
+		if ( ! $user ) {
+			return;
+		}
+
+		$this->api->log_message( "Role '{$role}' added to user {$user->user_login} (ID: {$user_id})" );
+		$this->sync_user_groups( $user_id );
+	}
+
+	public function on_user_role_removed( $user_id, $role ) {
+		$features = get_option( 'wp_cognito_features', array() );
+		if ( empty( $features['group_sync'] ) ) {
+			return;
+		}
+
+		$user = get_user_by( 'id', $user_id );
+		if ( ! $user ) {
+			return;
+		}
+
+		$this->api->log_message( "Role '{$role}' removed from user {$user->user_login} (ID: {$user_id})" );
 		$this->sync_user_groups( $user_id );
 	}
 
@@ -123,23 +154,52 @@ class Sync {
 		$user          = get_user_by( 'id', $user_id );
 
 		if ( ! $user ) {
+			$this->api->log_message( "Cannot sync groups: User ID {$user_id} not found", 'error' );
 			return false;
 		}
 
 		$cognito_user_id = get_user_meta( $user_id, 'cognito_user_id', true );
 		if ( empty( $cognito_user_id ) ) {
+			$this->api->log_message( "Cannot sync groups for user {$user->user_login}: No Cognito user ID found", 'warning' );
 			return false;
 		}
 
+		if ( empty( $synced_groups ) ) {
+			$this->api->log_message( "No groups configured for synchronization", 'info' );
+			return true;
+		}
+
+		$this->api->log_message( "Starting group sync for user {$user->user_login} (ID: {$user_id}, Cognito ID: {$cognito_user_id})" );
+		$this->api->log_message( "User's current WordPress roles: " . implode( ', ', $user->roles ) );
+		$this->api->log_message( "Groups configured for sync: " . implode( ', ', $synced_groups ) );
+
 		$success = true;
+		$actions_taken = array();
+
 		foreach ( $synced_groups as $group_name ) {
 			if ( in_array( $group_name, $user->roles ) ) {
-				if ( ! $this->api->update_group_membership( $cognito_user_id, $group_name, 'add' ) ) {
+				// User has this role, ensure they're in the Cognito group
+				if ( $this->api->update_group_membership( $cognito_user_id, $group_name, 'add' ) ) {
+					$actions_taken[] = "Added to WP_{$group_name}";
+				} else {
 					$success = false;
+					$actions_taken[] = "Failed to add to WP_{$group_name}";
 				}
-			} elseif ( ! $this->api->update_group_membership( $cognito_user_id, $group_name, 'remove' ) ) {
+			} else {
+				// User doesn't have this role, ensure they're removed from the Cognito group
+				if ( $this->api->update_group_membership( $cognito_user_id, $group_name, 'remove' ) ) {
+					$actions_taken[] = "Removed from WP_{$group_name}";
+				} else {
 					$success = false;
+					$actions_taken[] = "Failed to remove from WP_{$group_name}";
+				}
 			}
+		}
+
+		if ( ! empty( $actions_taken ) ) {
+			$this->api->log_message( "Group sync actions for user {$user->user_login}: " . implode( ', ', $actions_taken ) );
+		} else {
+			$this->api->log_message( "No group sync actions needed for user {$user->user_login}" );
 		}
 
 		return $success;

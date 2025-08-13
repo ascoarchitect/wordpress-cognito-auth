@@ -3,7 +3,7 @@
  * Plugin Name: WordPress Cognito Authentication & Sync
  * Plugin URI: https://github.com/ascoarchitect/wordpress-cognito-auth
  * Description: Complete WordPress integration with Amazon Cognito - handles authentication via JWT/OIDC and bidirectional user synchronization.
- * Version: 2.3.0
+ * Version: 2.3.1
  * Author: Adam Scott
  * Text Domain: wp-cognito-auth
  * Domain Path: /languages
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('WP_COGNITO_AUTH_VERSION', '2.3.0');
+define('WP_COGNITO_AUTH_VERSION', '2.3.1');
 define('WP_COGNITO_AUTH_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('WP_COGNITO_AUTH_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WP_COGNITO_AUTH_PLUGIN_FILE', __FILE__);

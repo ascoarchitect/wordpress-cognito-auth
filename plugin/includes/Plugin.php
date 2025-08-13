@@ -88,6 +88,8 @@ class Plugin {
 			add_action( 'profile_update', array( $this->sync, 'on_user_update' ), 10, 2 );
 			add_action( 'delete_user', array( $this->sync, 'on_user_delete' ), 10, 1 );
 			add_action( 'set_user_role', array( $this->sync, 'on_user_role_change' ), 10, 3 );
+			add_action( 'add_user_role', array( $this->sync, 'on_user_role_added' ), 10, 2 );
+			add_action( 'remove_user_role', array( $this->sync, 'on_user_role_removed' ), 10, 2 );
 		}
 
 		// Authentication hooks (if auth is enabled)

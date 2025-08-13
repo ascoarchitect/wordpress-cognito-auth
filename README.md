@@ -530,7 +530,7 @@ GPL v3 or later
 - [OAuth 2.0 Flows](https://docs.aws.amazon.com/cognito/latest/developerguide/authorization-endpoint.html)
 
 ### Plugin Information
-- **Version**: 2.2.0
+- **Version**: 2.3.1
 - **Author**: Adam Scott
 - **Tested up to**: WordPress 6.6
 - **Stable tag**: 2.2.0
@@ -599,6 +599,20 @@ wp-cognito-auth/
 - **Regular Rotation**: Rotate Cognito client secrets and API keys regularly
 
 ## 📝 Changelog
+
+### Version 2.3.1
+- **Enhanced Role Synchronization**: Added immediate synchronization for secondary role changes (add_user_role/remove_user_role hooks)
+- **Comprehensive Role Hook Coverage**: Now captures all WordPress role changes including:
+  - Primary role changes via `set_user_role` (existing)
+  - Secondary role additions via `add_user_role` (new)
+  - Secondary role removals via `remove_user_role` (new)
+- **Improved Sync Logging**: Enhanced logging in `sync_user_groups()` with detailed action tracking:
+  - Shows current WordPress roles and configured sync groups
+  - Logs each group membership action (added/removed/failed)
+  - Provides warning messages when users aren't linked or groups aren't configured
+- **Real-time Group Updates**: Role changes now trigger immediate Cognito group membership updates instead of waiting for login/manual sync
+- **Enhanced Documentation**: Updated help text and admin interface to reflect comprehensive role synchronization coverage
+- **Better Error Handling**: More specific error messages and logging levels (info, warning, error) for sync operations
 
 ### Version 2.3.0
 - **Enhanced Error Handling**: Graceful handling of "User already exists" errors during sync operations
