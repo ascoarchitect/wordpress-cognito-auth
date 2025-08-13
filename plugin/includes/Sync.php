@@ -165,15 +165,15 @@ class Sync {
 		}
 
 		if ( empty( $synced_groups ) ) {
-			$this->api->log_message( "No groups configured for synchronization", 'info' );
+			$this->api->log_message( 'No groups configured for synchronization', 'info' );
 			return true;
 		}
 
 		$this->api->log_message( "Starting group sync for user {$user->user_login} (ID: {$user_id}, Cognito ID: {$cognito_user_id})" );
 		$this->api->log_message( "User's current WordPress roles: " . implode( ', ', $user->roles ) );
-		$this->api->log_message( "Groups configured for sync: " . implode( ', ', $synced_groups ) );
+		$this->api->log_message( 'Groups configured for sync: ' . implode( ', ', $synced_groups ) );
 
-		$success = true;
+		$success       = true;
 		$actions_taken = array();
 
 		foreach ( $synced_groups as $group_name ) {
@@ -182,7 +182,7 @@ class Sync {
 				if ( $this->api->update_group_membership( $cognito_user_id, $group_name, 'add' ) ) {
 					$actions_taken[] = "Added to WP_{$group_name}";
 				} else {
-					$success = false;
+					$success         = false;
 					$actions_taken[] = "Failed to add to WP_{$group_name}";
 				}
 			} else {
@@ -190,7 +190,7 @@ class Sync {
 				if ( $this->api->update_group_membership( $cognito_user_id, $group_name, 'remove' ) ) {
 					$actions_taken[] = "Removed from WP_{$group_name}";
 				} else {
-					$success = false;
+					$success         = false;
 					$actions_taken[] = "Failed to remove from WP_{$group_name}";
 				}
 			}

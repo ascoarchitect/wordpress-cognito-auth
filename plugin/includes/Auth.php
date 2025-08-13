@@ -1,13 +1,56 @@
 <?php
+/**
+ * Authentication handler for AWS Cognito
+ *
+ * @package WP_Cognito_Auth
+ */
+
 namespace WP_Cognito_Auth;
 
+/**
+ * Class Auth
+ *
+ * Handles authentication with AWS Cognito
+ */
 class Auth {
+	/**
+	 * User pool ID
+	 *
+	 * @var string
+	 */
 	private $user_pool_id;
+
+	/**
+	 * Client ID
+	 *
+	 * @var string
+	 */
 	private $client_id;
+
+	/**
+	 * Client secret
+	 *
+	 * @var string
+	 */
 	private $client_secret;
+
+	/**
+	 * AWS region
+	 *
+	 * @var string
+	 */
 	private $region;
+
+	/**
+	 * Hosted UI domain
+	 *
+	 * @var string
+	 */
 	private $hosted_ui_domain;
 
+	/**
+	 * Class constructor
+	 */
 	public function __construct() {
 		$this->user_pool_id     = get_option( 'wp_cognito_auth_user_pool_id' );
 		$this->client_id        = get_option( 'wp_cognito_auth_client_id' );
@@ -28,6 +71,11 @@ class Auth {
 		add_action( 'wp_logout', array( $this, 'handle_wp_logout' ) );
 	}
 
+	/**
+	 * Initiate login with Cognito
+	 *
+	 * @param string $redirect_to URL to redirect to after login.
+	 */
 	public function initiate_login( $redirect_to = '' ) {
 		$params = array(
 			'client_id'     => $this->client_id,
@@ -42,29 +90,32 @@ class Auth {
 		exit;
 	}
 
+	/**
+	 * Handle Cognito login request
+	 */
 	public function handle_cognito_login() {
-		if ( ! isset( $_GET['cognito_login'] ) || $_GET['cognito_login'] !== '1' ) {
+		if ( ! isset( $_GET['cognito_login'] ) || '1' !== $_GET['cognito_login'] ) {
 			return;
 		}
 
-		// Handle re-authentication - logout current user first
-		if ( isset( $_GET['reauth'] ) && $_GET['reauth'] === '1' && is_user_logged_in() ) {
+		// Handle re-authentication - logout current user first.
+		if ( isset( $_GET['reauth'] ) && '1' === $_GET['reauth'] && is_user_logged_in() ) {
 			wp_logout();
 		}
 
-		// Get redirect URL from query parameter or referer
+		// Get redirect URL from query parameter or referer.
 		$redirect_to = '';
 		if ( isset( $_GET['redirect_to'] ) ) {
-			$redirect_to = urldecode( $_GET['redirect_to'] );
+			$redirect_to = urldecode( wp_unslash( sanitize_text_field( $_GET['redirect_to'] ) ) );
 		} elseif ( isset( $_SERVER['HTTP_REFERER'] ) ) {
-			$referer  = $_SERVER['HTTP_REFERER'];
+			$referer  = wp_unslash( sanitize_url( $_SERVER['HTTP_REFERER'] ) );
 			$site_url = site_url();
 			if ( strpos( $referer, $site_url ) === 0 && strpos( $referer, 'wp-login.php' ) === false ) {
 				$redirect_to = $referer;
 			}
 		}
 
-		// If no specific redirect, leave empty (will be determined after login based on user role)
+		// If no specific redirect, leave empty (will be determined after login based on user role).
 		if ( empty( $redirect_to ) ) {
 			$redirect_to = '';
 		}
@@ -72,143 +123,153 @@ class Auth {
 		$this->initiate_login( $redirect_to );
 	}
 
+	/**
+	 * Handle Cognito callback after authentication
+	 */
 	public function handle_cognito_callback() {
-		if ( ! isset( $_GET['cognito_callback'] ) || $_GET['cognito_callback'] !== '1' ) {
+		if ( ! isset( $_GET['cognito_callback'] ) || '1' !== $_GET['cognito_callback'] ) {
 			return;
 		}
 
 		try {
 			if ( ! isset( $_GET['code'] ) || ! isset( $_GET['state'] ) ) {
-				wp_die( __( 'Missing authentication parameters', 'wp-cognito-auth' ) );
+				wp_die( esc_html__( 'Missing authentication parameters', 'wp-cognito-auth' ) );
 			}
 
-			// Verify state parameter
-			$state_parts = explode( '|', $_GET['state'], 2 );
+			// Verify state parameter.
+			$state_parts = explode( '|', wp_unslash( sanitize_text_field( $_GET['state'] ) ), 2 );
 			if ( ! wp_verify_nonce( $state_parts[0], 'cognito_auth' ) ) {
-				wp_die( __( 'Invalid authentication state', 'wp-cognito-auth' ) );
+				wp_die( esc_html__( 'Invalid authentication state', 'wp-cognito-auth' ) );
 			}
 
-			$code = sanitize_text_field( $_GET['code'] );
+			$code = wp_unslash( sanitize_text_field( $_GET['code'] ) );
 
-			// Handle redirect URL from state parameter
+			// Handle redirect URL from state parameter.
 			$redirect_to = '';
 			if ( isset( $state_parts[1] ) && ! empty( $state_parts[1] ) ) {
 				$decoded_redirect = base64_decode( $state_parts[1] );
 				if ( ! empty( $decoded_redirect ) ) {
-					// Validate that the redirect URL is from our site
-					$parsed_url = parse_url( $decoded_redirect );
-					$site_host  = parse_url( home_url(), PHP_URL_HOST );
+					// Validate that the redirect URL is from our site.
+					$parsed_url = wp_parse_url( $decoded_redirect );
+					$site_host  = wp_parse_url( home_url(), PHP_URL_HOST );
 
 					if ( $parsed_url && isset( $parsed_url['host'] ) && $parsed_url['host'] === $site_host ) {
 						$redirect_to = $decoded_redirect;
 					} elseif ( strpos( $decoded_redirect, '/' ) === 0 ) {
-						// Relative URL, make it absolute
+						// Relative URL, make it absolute.
 						$redirect_to = home_url( $decoded_redirect );
 					}
 				}
 			}
 
-			// If no valid redirect URL was preserved, determine appropriate default
+			// If no valid redirect URL was preserved, determine appropriate default.
 			if ( empty( $redirect_to ) ) {
-				// For users with admin capabilities, go to admin
-				// For regular users, go to homepage
-				$redirect_to = home_url(); // Default to homepage for all users
+				// For users with admin capabilities, go to admin.
+				// For regular users, go to homepage.
+				$redirect_to = home_url(); // Default to homepage for all users.
 			}
 
-			// Exchange code for tokens
+			// Exchange code for tokens.
 			$tokens = $this->exchange_code_for_tokens( $code );
 			if ( ! $tokens ) {
-				wp_die( __( 'Failed to authenticate with Cognito. Please check your configuration and try again.', 'wp-cognito-auth' ) );
+				wp_die( esc_html__( 'Failed to authenticate with Cognito. Please check your configuration and try again.', 'wp-cognito-auth' ) );
 			}
 
-			// Validate and decode ID token
+			// Validate and decode ID token.
 			$user_data = $this->validate_and_decode_token( $tokens['id_token'] );
 			if ( ! $user_data ) {
-				wp_die( __( 'Invalid token received from Cognito. Please try again.', 'wp-cognito-auth' ) );
+				wp_die( esc_html__( 'Invalid token received from Cognito. Please try again.', 'wp-cognito-auth' ) );
 			}
 
-			// Create or update WordPress user
+			// Create or update WordPress user.
 			$wp_user = $this->create_or_update_wp_user( $user_data );
 			if ( ! $wp_user ) {
-				wp_die( __( 'Failed to create WordPress user. Please contact the administrator.', 'wp-cognito-auth' ) );
+				wp_die( esc_html__( 'Failed to create WordPress user. Please contact the administrator.', 'wp-cognito-auth' ) );
 			}
 
-			// Log the user in
+			// Log the user in.
 			wp_set_current_user( $wp_user->ID );
 			wp_set_auth_cookie( $wp_user->ID, true );
 			do_action( 'wp_login', $wp_user->user_login, $wp_user );
 
-			// Now that user is logged in, refine redirect logic based on user capabilities
+			// Now that user is logged in, refine redirect logic based on user capabilities.
 			if ( empty( $redirect_to ) || $redirect_to === home_url() ) {
-				// If we're using default redirect, check user capabilities
+				// If we're using default redirect, check user capabilities.
 				if ( user_can( $wp_user->ID, 'edit_posts' ) || user_can( $wp_user->ID, 'manage_options' ) ) {
-					// Admin users go to dashboard
+					// Admin users go to dashboard.
 					$redirect_to = admin_url();
 				} else {
-					// Regular users go to homepage
+					// Regular users go to homepage.
 					$redirect_to = home_url();
 				}
 			}
 
-			// Store redirect URL in session for fallback
+			// Store redirect URL in session for fallback.
 			if ( ! session_id() ) {
 				session_start();
 			}
 			$_SESSION['cognito_redirect_to'] = $redirect_to;
 
-			// Try JavaScript redirect as a fallback
+			// Try JavaScript redirect as a fallback.
 			?>
 			<!DOCTYPE html>
 			<html>
 			<head>
-				<title><?php _e( 'Login Successful', 'wp-cognito-auth' ); ?></title>
+				<title><?php esc_html_e( 'Login Successful', 'wp-cognito-auth' ); ?></title>
 				<script>
-					window.location.href = <?php echo json_encode( $redirect_to ); ?>;
+					window.location.href = <?php echo wp_json_encode( $redirect_to ); ?>;
 				</script>
 				<meta http-equiv="refresh" content="0;url=<?php echo esc_attr( $redirect_to ); ?>">
 			</head>
 			<body>
-				<p><?php _e( 'Login successful! Redirecting...', 'wp-cognito-auth' ); ?></p>
-				<p><a href="<?php echo esc_url( $redirect_to ); ?>"><?php _e( 'Click here if not redirected automatically', 'wp-cognito-auth' ); ?></a></p>
+				<p><?php esc_html_e( 'Login successful! Redirecting...', 'wp-cognito-auth' ); ?></p>
+				<p><a href="<?php echo esc_url( $redirect_to ); ?>"><?php esc_html_e( 'Click here if not redirected automatically', 'wp-cognito-auth' ); ?></a></p>
 			</body>
 			</html>
 			<?php
 			exit;
 
 		} catch ( Exception $e ) {
-			// Show a user-friendly error page
+			// Show a user-friendly error page.
 			wp_die(
-				__( 'Authentication failed. Please try again.', 'wp-cognito-auth' ) .
-				'<br><br><a href="' . esc_url( wp_login_url() ) . '">' . __( 'Try Again', 'wp-cognito-auth' ) . '</a>',
-				__( 'Authentication Error', 'wp-cognito-auth' ),
+				esc_html__( 'Authentication failed. Please try again.', 'wp-cognito-auth' ) .
+				'<br><br><a href="' . esc_url( wp_login_url() ) . '">' . esc_html__( 'Try Again', 'wp-cognito-auth' ) . '</a>',
+				esc_html__( 'Authentication Error', 'wp-cognito-auth' ),
 				array( 'back_link' => true )
 			);
 		}
 	}
 
+	/**
+	 * Handle logout request
+	 */
 	public function handle_logout() {
-		if ( ! isset( $_GET['cognito_logout'] ) || $_GET['cognito_logout'] !== '1' ) {
+		if ( ! isset( $_GET['cognito_logout'] ) || '1' !== $_GET['cognito_logout'] ) {
 			return;
 		}
 
-		$redirect_to = isset( $_GET['redirect_to'] ) ? $_GET['redirect_to'] : home_url();
+		$redirect_to = isset( $_GET['redirect_to'] ) ? wp_unslash( sanitize_url( $_GET['redirect_to'] ) ) : home_url();
 
-		// Logout from WordPress first
+		// Logout from WordPress first.
 		wp_logout();
 
-		// Redirect to Cognito logout
+		// Redirect to Cognito logout.
 		$logout_params = array(
 			'client_id'  => $this->client_id,
 			'logout_uri' => $redirect_to,
 		);
 
 		$logout_url = "https://{$this->hosted_ui_domain}/logout?" . http_build_query( $logout_params );
-		wp_redirect( $logout_url );
+		wp_safe_redirect( $logout_url );
 		exit;
 	}
 
 	/**
 	 * Modify the logout URL to include Cognito logout
+	 *
+	 * @param string $logout_url The logout URL.
+	 * @param string $redirect   The redirect URL.
+	 * @return string Modified logout URL.
 	 */
 	public function modify_logout_url( $logout_url, $redirect ) {
 		if ( empty( $this->hosted_ui_domain ) || empty( $this->client_id ) ) {
@@ -227,7 +288,7 @@ class Auth {
 	 * Handle WordPress logout action
 	 */
 	public function handle_wp_logout() {
-		// Clear any Cognito-specific session data
+		// Clear any Cognito-specific session data.
 		if ( isset( $_SESSION ) ) {
 			unset( $_SESSION['cognito_user_data'] );
 			unset( $_SESSION['cognito_access_token'] );
@@ -238,155 +299,164 @@ class Auth {
 	 * Maybe redirect to Cognito if force authentication is enabled
 	 */
 	public function maybe_redirect_to_cognito() {
-		// Don't redirect if not on login page
-		if ( ! isset( $GLOBALS['pagenow'] ) || $GLOBALS['pagenow'] !== 'wp-login.php' ) {
+		// Don't redirect if not on login page.
+		if ( ! isset( $GLOBALS['pagenow'] ) || 'wp-login.php' !== $GLOBALS['pagenow'] ) {
 			return;
 		}
 
-		// Don't redirect if user is already logged in
+		// Don't redirect if user is already logged in.
 		if ( is_user_logged_in() ) {
 			return;
 		}
 
-		// Check if Cognito authentication is enabled and forced
+		// Check if Cognito authentication is enabled and forced.
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['authentication'] ) || ! get_option( 'wp_cognito_auth_force_cognito', false ) ) {
 			return;
 		}
 
-		// Allow emergency WordPress login with emergency access parameter
+		// Allow emergency WordPress login with emergency access parameter.
 		$emergency_param = get_option( 'wp_cognito_emergency_access_param' );
 		if ( $emergency_param && isset( $_GET[ $emergency_param ] ) ) {
 			return;
 		}
 
-		// Don't redirect if this is a logout action
-		if ( isset( $_GET['action'] ) && $_GET['action'] === 'logout' ) {
+		// Don't redirect if this is a logout action.
+		if ( isset( $_GET['action'] ) && 'logout' === $_GET['action'] ) {
 			return;
 		}
 
-		// Don't redirect if this is already a Cognito login request
-		if ( isset( $_GET['cognito_login'] ) && $_GET['cognito_login'] === '1' ) {
+		// Don't redirect if this is already a Cognito login request.
+		if ( isset( $_GET['cognito_login'] ) && '1' === $_GET['cognito_login'] ) {
 			return;
 		}
 
-		// Don't redirect if this is a Cognito callback
+		// Don't redirect if this is a Cognito callback.
 		if ( isset( $_GET['cognito_callback'] ) ) {
 			return;
 		}
 
-		// Don't redirect if this is a password reset or other special action
+		// Don't redirect if this is a password reset or other special action.
 		$allowed_actions = array( 'rp', 'resetpass', 'lostpassword', 'retrievepassword' );
-		if ( isset( $_GET['action'] ) && in_array( $_GET['action'], $allowed_actions ) ) {
+		if ( isset( $_GET['action'] ) && in_array( $_GET['action'], $allowed_actions, true ) ) {
 			return;
 		}
 
-		// Get redirect URL (where user wanted to go originally)
+		// Get redirect URL (where user wanted to go originally).
 		$redirect_to = '';
 		if ( isset( $_GET['redirect_to'] ) ) {
-			$redirect_to = urldecode( $_GET['redirect_to'] );
+			$redirect_to = urldecode( wp_unslash( sanitize_text_field( $_GET['redirect_to'] ) ) );
 		} elseif ( isset( $_POST['redirect_to'] ) ) {
-			$redirect_to = urldecode( $_POST['redirect_to'] );
+			$redirect_to = urldecode( wp_unslash( sanitize_text_field( $_POST['redirect_to'] ) ) );
 		} elseif ( isset( $_SERVER['HTTP_REFERER'] ) ) {
-			// If no explicit redirect, try to use the referring page
-			$referer  = $_SERVER['HTTP_REFERER'];
+			// If no explicit redirect, try to use the referring page.
+			$referer  = wp_unslash( sanitize_url( $_SERVER['HTTP_REFERER'] ) );
 			$site_url = site_url();
 			if ( strpos( $referer, $site_url ) === 0 && strpos( $referer, 'wp-login.php' ) === false ) {
 				$redirect_to = $referer;
 			}
 		}
 
-		// Validate redirect URL is from our site
+		// Validate redirect URL is from our site.
 		if ( ! empty( $redirect_to ) ) {
-			$parsed_url = parse_url( $redirect_to );
-			$site_host  = parse_url( home_url(), PHP_URL_HOST );
+			$parsed_url = wp_parse_url( $redirect_to );
+			$site_host  = wp_parse_url( home_url(), PHP_URL_HOST );
 
 			if ( ! $parsed_url || ! isset( $parsed_url['host'] ) || $parsed_url['host'] !== $site_host ) {
-				// If it's a relative URL, make it absolute
+				// If it's a relative URL, make it absolute.
 				if ( strpos( $redirect_to, '/' ) === 0 ) {
 					$redirect_to = home_url( $redirect_to );
 				} else {
-					// Invalid redirect URL, clear it
+					// Invalid redirect URL, clear it.
 					$redirect_to = '';
 				}
 			}
 		}
 
-		// If still no redirect, leave empty (will be determined after login based on user role)
+		// If still no redirect, leave empty (will be determined after login based on user role).
 		if ( empty( $redirect_to ) ) {
 			$redirect_to = '';
 		}
 
-		// Initiate Cognito login
+		// Initiate Cognito login.
 		$this->initiate_login( $redirect_to );
 	}
 
+	/**
+	 * Handle logged in user on login page
+	 */
 	public function handle_logged_in_user_on_login_page() {
-		// Don't redirect if not on login page
-		if ( ! isset( $GLOBALS['pagenow'] ) || $GLOBALS['pagenow'] !== 'wp-login.php' ) {
+		// Don't redirect if not on login page.
+		if ( ! isset( $GLOBALS['pagenow'] ) || 'wp-login.php' !== $GLOBALS['pagenow'] ) {
 			return;
 		}
 
-		// Only handle if user is already logged in
+		// Only handle if user is already logged in.
 		if ( ! is_user_logged_in() ) {
 			return;
 		}
 
-		// Don't redirect if this is a logout action
-		if ( isset( $_GET['action'] ) && $_GET['action'] === 'logout' ) {
+		// Don't redirect if this is a logout action.
+		if ( isset( $_GET['action'] ) && 'logout' === $_GET['action'] ) {
 			return;
 		}
 
-		// Don't redirect if this is a password reset or other special action
+		// Don't redirect if this is a password reset or other special action.
 		$allowed_actions = array( 'rp', 'resetpass', 'lostpassword', 'retrievepassword', 'register' );
-		if ( isset( $_GET['action'] ) && in_array( $_GET['action'], $allowed_actions ) ) {
+		if ( isset( $_GET['action'] ) && in_array( $_GET['action'], $allowed_actions, true ) ) {
 			return;
 		}
 
-		// Don't redirect if this is a Cognito callback
+		// Don't redirect if this is a Cognito callback.
 		if ( isset( $_GET['cognito_callback'] ) ) {
 			return;
 		}
 
-		// Get current user
+		// Get current user.
 		$current_user = wp_get_current_user();
 
-		// Determine where to redirect based on redirect_to parameter or user capabilities
+		// Determine where to redirect based on redirect_to parameter or user capabilities.
 		$redirect_to = '';
 		if ( isset( $_GET['redirect_to'] ) && ! empty( $_GET['redirect_to'] ) ) {
-			$redirect_to = urldecode( $_GET['redirect_to'] );
+			$redirect_to = urldecode( wp_unslash( sanitize_text_field( $_GET['redirect_to'] ) ) );
 
-			// Validate redirect URL is from our site
-			$parsed_url = parse_url( $redirect_to );
-			$site_host  = parse_url( home_url(), PHP_URL_HOST );
+			// Validate redirect URL is from our site.
+			$parsed_url = wp_parse_url( $redirect_to );
+			$site_host  = wp_parse_url( home_url(), PHP_URL_HOST );
 
 			if ( ! $parsed_url || ! isset( $parsed_url['host'] ) || $parsed_url['host'] !== $site_host ) {
-				// If it's a relative URL, make it absolute
+				// If it's a relative URL, make it absolute.
 				if ( strpos( $redirect_to, '/' ) === 0 ) {
 					$redirect_to = home_url( $redirect_to );
 				} else {
-					// Invalid redirect URL, use default
+					// Invalid redirect URL, use default.
 					$redirect_to = '';
 				}
 			}
 		}
 
-		// If no valid redirect URL, determine based on user capabilities
+		// If no valid redirect URL, determine based on user capabilities.
 		if ( empty( $redirect_to ) ) {
 			if ( user_can( $current_user->ID, 'edit_posts' ) || user_can( $current_user->ID, 'manage_options' ) ) {
-				// Admin users go to dashboard
+				// Admin users go to dashboard.
 				$redirect_to = admin_url();
 			} else {
-				// Regular users go to homepage
+				// Regular users go to homepage.
 				$redirect_to = home_url();
 			}
 		}
 
-		// Redirect the already logged-in user
+		// Redirect the already logged-in user.
 		wp_safe_redirect( $redirect_to );
 		exit;
 	}
 
+	/**
+	 * Exchange authorization code for tokens
+	 *
+	 * @param string $code The authorization code.
+	 * @return array|false Token array or false on failure.
+	 */
 	private function exchange_code_for_tokens( $code ) {
 		$token_url = "https://{$this->hosted_ui_domain}/oauth2/token";
 
@@ -415,13 +485,19 @@ class Auth {
 		$body          = wp_remote_retrieve_body( $response );
 		$data          = json_decode( $body, true );
 
-		if ( $response_code !== 200 || ! isset( $data['access_token'] ) ) {
+		if ( 200 !== $response_code || ! isset( $data['access_token'] ) ) {
 			return false;
 		}
 
 		return $data;
 	}
 
+	/**
+	 * Validate and decode JWT token
+	 *
+	 * @param string $id_token The JWT token.
+	 * @return array|false Decoded token data or false on failure.
+	 */
 	private function validate_and_decode_token( $id_token ) {
 		$jwks = $this->get_cognito_jwks();
 		if ( ! $jwks ) {
@@ -437,6 +513,12 @@ class Auth {
 		}
 	}
 
+	/**
+	 * Create or update WordPress user
+	 *
+	 * @param array $cognito_user_data User data from Cognito.
+	 * @return WP_User|false User object or false on failure.
+	 */
 	private function create_or_update_wp_user( $cognito_user_data ) {
 		$email       = $cognito_user_data['email'];
 		$cognito_sub = $cognito_user_data['sub'];
@@ -488,6 +570,12 @@ class Auth {
 		return get_user_by( 'id', $user_id );
 	}
 
+	/**
+	 * Update user data from Cognito
+	 *
+	 * @param int   $user_id      The WordPress user ID.
+	 * @param array $cognito_data User data from Cognito.
+	 */
 	private function update_user_from_cognito( $user_id, $cognito_data ) {
 		$updates = array();
 
@@ -565,6 +653,12 @@ class Auth {
 		$this->sync_user_groups_from_cognito( $user_id, $cognito_data );
 	}
 
+	/**
+	 * Sync user groups from Cognito
+	 *
+	 * @param int   $user_id      The WordPress user ID.
+	 * @param array $cognito_data User data from Cognito.
+	 */
 	private function sync_user_groups_from_cognito( $user_id, $cognito_data ) {
 		$cognito_groups = isset( $cognito_data['cognito:groups'] ) ? $cognito_data['cognito:groups'] : array();
 
@@ -575,18 +669,21 @@ class Auth {
 		foreach ( $synced_groups as $wp_role ) {
 			$cognito_group_name = "WP_{$wp_role}";
 
-			if ( in_array( $cognito_group_name, $cognito_groups ) ) {
-				if ( ! in_array( $wp_role, $current_roles ) ) {
+			if ( in_array( $cognito_group_name, $cognito_groups, true ) ) {
+				if ( ! in_array( $wp_role, $current_roles, true ) ) {
 					$user->add_role( $wp_role );
 				}
-			} elseif ( in_array( $wp_role, $current_roles ) ) {
+			} elseif ( in_array( $wp_role, $current_roles, true ) ) {
 					$user->remove_role( $wp_role );
 			}
 		}
 	}
 
+	/**
+	 * Add Cognito login button
+	 */
 	public function add_cognito_login_button() {
-		// Only show on login page and when not logged in
+		// Only show on login page and when not logged in.
 		if ( is_user_logged_in() ) {
 			return;
 		}
@@ -596,24 +693,24 @@ class Auth {
 			return;
 		}
 
-		// Don't show button if force mode is enabled (since it auto-redirects)
+		// Don't show button if force mode is enabled (since it auto-redirects).
 		if ( get_option( 'wp_cognito_auth_force_cognito', false ) ) {
 			return;
 		}
 
 		$login_url = add_query_arg( 'cognito_login', '1', wp_login_url() );
 
-		// Preserve redirect_to parameter if present
+		// Preserve redirect_to parameter if present.
 		if ( isset( $_GET['redirect_to'] ) ) {
-			$login_url = add_query_arg( 'redirect_to', urlencode( $_GET['redirect_to'] ), $login_url );
+			$login_url = add_query_arg( 'redirect_to', rawurlencode( wp_unslash( sanitize_text_field( $_GET['redirect_to'] ) ) ), $login_url );
 		}
 
-		// Get customizable options
+		// Get customizable options.
 		$button_text  = get_option( 'wp_cognito_auth_login_button_text', 'Login with Cognito' );
 		$button_color = get_option( 'wp_cognito_auth_login_button_color', '#ff9900' );
 		$text_color   = get_option( 'wp_cognito_auth_login_button_text_color', '#ffffff' );
 
-		// Calculate hover color (darker version)
+		// Calculate hover color (darker version).
 		$hover_color = $this->darken_hex_color( $button_color, 20 );
 		?>
 		<div class="cognito-login-section">
@@ -625,7 +722,7 @@ class Auth {
 				</a>
 			</p>
 			<div style="text-align: center; margin: 10px 0;">
-				<span style="color: #666;">— <?php _e( 'or', 'wp-cognito-auth' ); ?> —</span>
+				<span style="color: #666;">— <?php esc_html_e( 'or', 'wp-cognito-auth' ); ?> —</span>
 			</div>
 			<style>
 				.wp-cognito-login:hover {
@@ -641,13 +738,16 @@ class Auth {
 		<?php
 	}
 
+	/**
+	 * Add Cognito login fallback button
+	 */
 	public function add_cognito_login_fallback() {
-		// Only show on login page
-		if ( ! isset( $GLOBALS['pagenow'] ) || $GLOBALS['pagenow'] !== 'wp-login.php' ) {
+		// Only show on login page.
+		if ( ! isset( $GLOBALS['pagenow'] ) || 'wp-login.php' !== $GLOBALS['pagenow'] ) {
 			return;
 		}
 
-		// Don't show if user is already logged in
+		// Don't show if user is already logged in.
 		if ( is_user_logged_in() ) {
 			return;
 		}
@@ -657,19 +757,19 @@ class Auth {
 			return;
 		}
 
-		// Don't show button if force mode is enabled (since it auto-redirects)
+		// Don't show button if force mode is enabled (since it auto-redirects).
 		if ( get_option( 'wp_cognito_auth_force_cognito', false ) ) {
 			return;
 		}
 
 		$login_url = add_query_arg( 'cognito_login', '1', wp_login_url() );
 
-		// Preserve redirect_to parameter if present
+		// Preserve redirect_to parameter if present.
 		if ( isset( $_GET['redirect_to'] ) ) {
-			$login_url = add_query_arg( 'redirect_to', urlencode( $_GET['redirect_to'] ), $login_url );
+			$login_url = add_query_arg( 'redirect_to', rawurlencode( wp_unslash( sanitize_text_field( $_GET['redirect_to'] ) ) ), $login_url );
 		}
 
-		// Get customizable options
+		// Get customizable options.
 		$button_text  = get_option( 'wp_cognito_auth_login_button_text', 'Login with Cognito' );
 		$button_color = get_option( 'wp_cognito_auth_login_button_color', '#ff9900' );
 		$text_color   = get_option( 'wp_cognito_auth_login_button_text_color', '#ffffff' );
@@ -698,7 +798,7 @@ class Auth {
 					'</a>' +
 					'</p>' +
 					'<div style="text-align: center; margin: 10px 0;">' +
-					'<span style="color: #666;">— <?php _e( 'or', 'wp-cognito-auth' ); ?> —</span>' +
+					'<span style="color: #666;">— <?php esc_html_e( 'or', 'wp-cognito-auth' ); ?> —</span>' +
 					'</div>' +
 					'</div>';
 				
@@ -728,31 +828,43 @@ class Auth {
 
 	/**
 	 * Helper function to darken a hex color by a percentage
+	 *
+	 * @param string $hex     The hex color code.
+	 * @param int    $percent The percentage to darken.
+	 * @return string The darkened hex color.
 	 */
 	private function darken_hex_color( $hex, $percent ) {
-		// Remove # if present
+		// Remove # if present.
 		$hex = str_replace( '#', '', $hex );
 
-		// Validate hex color
+		// Validate hex color.
 		if ( strlen( $hex ) !== 6 ) {
-			return '#ff9900'; // Return default if invalid
+			return '#ff9900'; // Return default if invalid.
 		}
 
-		// Parse RGB values
+		// Parse RGB values.
 		$r = hexdec( substr( $hex, 0, 2 ) );
 		$g = hexdec( substr( $hex, 2, 2 ) );
 		$b = hexdec( substr( $hex, 4, 2 ) );
 
-		// Darken by percentage
+		// Darken by percentage.
 		$factor = ( 100 - $percent ) / 100;
 		$r      = max( 0, min( 255, floor( $r * $factor ) ) );
 		$g      = max( 0, min( 255, floor( $g * $factor ) ) );
 		$b      = max( 0, min( 255, floor( $b * $factor ) ) );
 
-		// Convert back to hex
+		// Convert back to hex.
 		return sprintf( '#%02x%02x%02x', $r, $g, $b );
 	}
 
+	/**
+	 * Authenticate Cognito user
+	 *
+	 * @param mixed  $user     The user object.
+	 * @param string $username The username (unused).
+	 * @param string $password The password (unused).
+	 * @return mixed The user object.
+	 */
 	public function authenticate_cognito_user( $user, $username, $password ) {
 		if ( is_a( $user, 'WP_User' ) ) {
 			return $user;
@@ -760,11 +872,16 @@ class Auth {
 		return $user;
 	}
 
+	/**
+	 * Get Cognito JWKS
+	 *
+	 * @return array|false JWKS data or false on failure.
+	 */
 	private function get_cognito_jwks() {
 		$cache_key   = 'cognito_jwks_' . md5( $this->user_pool_id );
 		$cached_jwks = get_transient( $cache_key );
 
-		if ( $cached_jwks !== false ) {
+		if ( false !== $cached_jwks ) {
 			return $cached_jwks;
 		}
 
@@ -786,10 +903,22 @@ class Auth {
 		return $jwks;
 	}
 
+	/**
+	 * Get callback URL
+	 *
+	 * @return string The callback URL.
+	 */
 	private function get_callback_url() {
 		return add_query_arg( 'cognito_callback', '1', home_url( '/wp-login.php' ) );
 	}
 
+	/**
+	 * Generate username from email and cognito data
+	 *
+	 * @param string $email        The email address.
+	 * @param array  $cognito_data User data from Cognito.
+	 * @return string The generated username.
+	 */
 	private function generate_username( $email, $cognito_data ) {
 		$username = isset( $cognito_data['preferred_username'] )
 			? $cognito_data['preferred_username']
