@@ -64,6 +64,7 @@ Resources:
                   }
                   console.log('Parsed body:', body);
                   const { action } = body;
+                  console.log('Processing action:', action);
                   const userPoolId = process.env.USER_POOL_ID;
                   if (!userPoolId) {
                       throw new Error('USER_POOL_ID environment variable is required');
@@ -87,6 +88,8 @@ Resources:
                       default:
                           throw new Error('Invalid action specified');
                   }
+                  console.log('Final result object being returned:', JSON.stringify(result, null, 2));
+
                   return {
                       statusCode: 200,
                       headers: {
@@ -244,6 +247,9 @@ Resources:
                   console.log('Creating user with input:', JSON.stringify(input, null, 2));
                   const createCommand = new AdminCreateUserCommand(input);
                   const createResult = await client.send(createCommand);
+
+                  console.log('Raw createUser result from Cognito:', JSON.stringify(createResult, null, 2));
+
                   // Set permanent password for passwordless auth
                   const setPasswordInput = {
                       UserPoolId: userPoolId,
@@ -254,6 +260,8 @@ Resources:
                   console.log('Setting permanent password for passwordless auth');
                   const setPasswordCommand = new AdminSetUserPasswordCommand(setPasswordInput);
                   await client.send(setPasswordCommand);
+
+                  console.log('Final createUser result being returned:', JSON.stringify(createResult, null, 2));
                   return createResult;
               } catch (error) {
                   console.error('Error in createUser:', error);
@@ -320,21 +328,31 @@ Resources:
                       console.log('Updating user attributes:', JSON.stringify(input, null, 2));
                       const command = new AdminUpdateUserAttributesCommand(input);
                       const result = await client.send(command);
-                      return {
+
+                      console.log('Raw updateUser result from Cognito:', JSON.stringify(result, null, 2));
+
+                      const finalResult = {
                           ...result,
                           cognitoUsername: user.cognito_user_id
                       };
+
+                      console.log('Final updateUser result being returned:', JSON.stringify(finalResult, null, 2));
+                      return finalResult;
                   } catch (error) {
                       if (error.name === 'UserNotFoundException') {
                           console.log('User not found with Cognito ID, attempting to create');
-                          return createUser(userPoolId, user);
+                          const createResult = await createUser(userPoolId, user);
+                          console.log('Fallback createUser result:', JSON.stringify(createResult, null, 2));
+                          return createResult;
                       }
                       throw error;
                   }
               }
               // If we don't have a Cognito ID, create a new user
               console.log('No Cognito ID provided, creating new user');
-              return createUser(userPoolId, user);
+              const createResult = await createUser(userPoolId, user);
+              console.log('No-Cognito-ID createUser result:', JSON.stringify(createResult, null, 2));
+              return createResult;
           }
           async function deleteUser(userPoolId, user) {
               if (!user.cognito_user_id) {

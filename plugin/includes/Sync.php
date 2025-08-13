@@ -2,353 +2,377 @@
 namespace WP_Cognito_Auth;
 
 class Sync {
-    private $api;
+	private $api;
 
-    public function __construct($api) {
-        $this->api = $api;
-    }
+	public function __construct( $api ) {
+		$this->api = $api;
+	}
 
-    public function on_user_create($user_id) {
-        $features = get_option('wp_cognito_features', []);
-        if (empty($features['sync'])) {
-            return;
-        }
+	public function on_user_create( $user_id ) {
+		$features = get_option( 'wp_cognito_features', array() );
+		if ( empty( $features['sync'] ) ) {
+			return;
+		}
 
-        $user = get_userdata($user_id);
-        if (!$user) {
-            return;
-        }
+		$user = get_userdata( $user_id );
+		if ( ! $user ) {
+			return;
+		}
 
-        $user_data = $this->prepare_user_data($user_id, $user);
-        $this->api->create_user($user_data);
-        
-        if (!empty($features['group_sync'])) {
-            $this->sync_user_groups($user_id);
-        }
-    }
+		$this->api->log_message( "Creating new user in Cognito: {$user->user_email} (WordPress ID: {$user_id})" );
+		$user_data = $this->prepare_user_data( $user_id, $user );
+		$this->api->create_user( $user_data );
 
-    public function on_user_update($user_id, $old_user_data = null) {
-        $features = get_option('wp_cognito_features', []);
-        if (empty($features['sync'])) {
-            return;
-        }
+		if ( ! empty( $features['group_sync'] ) ) {
+			$this->sync_user_groups( $user_id );
+		}
+	}
 
-        $user = get_userdata($user_id);
-        if (!$user) {
-            return;
-        }
+	public function on_user_update( $user_id, $old_user_data = null ) {
+		$features = get_option( 'wp_cognito_features', array() );
+		if ( empty( $features['sync'] ) ) {
+			return;
+		}
 
-        $cognito_user_id = get_user_meta($user_id, 'cognito_user_id', true);
-        $user_data = $this->prepare_user_data($user_id, $user);
-        
-        if (!empty($cognito_user_id)) {
-            $user_data['cognito_user_id'] = $cognito_user_id;
-            $this->api->update_user($user_data);
-        } else {
-            $this->api->create_user($user_data);
-        }
-        
-        if (!empty($features['group_sync'])) {
-            $this->sync_user_groups($user_id);
-        }
-    }
+		$user = get_userdata( $user_id );
+		if ( ! $user ) {
+			return;
+		}
 
-    public function on_user_delete($user_id) {
-        $features = get_option('wp_cognito_features', []);
-        if (empty($features['sync'])) {
-            return;
-        }
+		$cognito_user_id = get_user_meta( $user_id, 'cognito_user_id', true );
+		$user_data       = $this->prepare_user_data( $user_id, $user );
 
-        $user = get_userdata($user_id);
-        if (!$user) {
-            return;
-        }
+		// Debug logging to understand the decision logic
+		$this->api->log_message(
+			"Sync decision for user {$user->user_email} (ID: {$user_id}): cognito_user_id = " .
+								( $cognito_user_id ? "'{$cognito_user_id}'" : 'EMPTY' )
+		);
 
-        $cognito_user_id = get_user_meta($user_id, 'cognito_user_id', true);
-        if (empty($cognito_user_id)) {
-            return;
-        }
+		if ( ! empty( $cognito_user_id ) ) {
+			$user_data['cognito_user_id'] = $cognito_user_id;
+			$this->api->log_message( "Performing UPDATE for user {$user->user_email} with cognito_user_id: {$cognito_user_id}" );
+			$this->api->update_user( $user_data );
+		} else {
+			$this->api->log_message( "Performing CREATE for user {$user->user_email} (no cognito_user_id found in WordPress)" );
+			$this->api->create_user( $user_data );
+		}
 
-        $user_data = [
-            'wp_user_id' => $user_id,
-            'email' => $user->user_email,
-            'username' => $user->user_login,
-            'cognito_user_id' => $cognito_user_id
-        ];
+		if ( ! empty( $features['group_sync'] ) ) {
+			$this->sync_user_groups( $user_id );
+		}
+	}
 
-        $this->api->delete_user($user_data);
-    }
+	public function on_user_delete( $user_id ) {
+		$features = get_option( 'wp_cognito_features', array() );
+		if ( empty( $features['sync'] ) ) {
+			return;
+		}
 
-    public function on_user_role_change($user_id, $new_role, $old_roles) {
-        $features = get_option('wp_cognito_features', []);
-        if (empty($features['group_sync'])) {
-            return;
-        }
+		$user = get_userdata( $user_id );
+		if ( ! $user ) {
+			return;
+		}
 
-        $this->sync_user_groups($user_id);
-    }
+		$cognito_user_id = get_user_meta( $user_id, 'cognito_user_id', true );
+		if ( empty( $cognito_user_id ) ) {
+			return;
+		}
 
-    private function prepare_user_data($user_id, $user) {
-        $first_name = get_user_meta($user_id, 'first_name', true);
-        $last_name = get_user_meta($user_id, 'last_name', true);
+		$user_data = array(
+			'wp_user_id'      => $user_id,
+			'email'           => $user->user_email,
+			'username'        => $user->user_login,
+			'cognito_user_id' => $cognito_user_id,
+		);
 
-        $full_name = trim($first_name . ' ' . $last_name);
-        if (empty($full_name)) {
-            $full_name = $user->display_name ?: $user->user_login;
-        }
+		$this->api->delete_user( $user_data );
+	}
 
-        return [
-            'wp_user_id' => $user_id,
-            'email' => $user->user_email,
-            'username' => $user->user_login,
-            'firstName' => $first_name,
-            'lastName' => $last_name,
-            'name' => $full_name,
-            'wp_memberrank' => get_user_meta($user_id, 'wpuef_cid_c6', true),
-            'wp_membercategory' => get_user_meta($user_id, 'wpuef_cid_c10', true)
-        ];
-    }
+	public function on_user_role_change( $user_id, $new_role, $old_roles ) {
+		$features = get_option( 'wp_cognito_features', array() );
+		if ( empty( $features['group_sync'] ) ) {
+			return;
+		}
 
-    public function sync_user_groups($user_id) {
-        $synced_groups = get_option('wp_cognito_sync_groups', []);
-        $user = get_user_by('id', $user_id);
-        
-        if (!$user) {
-            return false;
-        }
+		$this->sync_user_groups( $user_id );
+	}
 
-        $cognito_user_id = get_user_meta($user_id, 'cognito_user_id', true);
-        if (empty($cognito_user_id)) {
-            return false;
-        }
+	private function prepare_user_data( $user_id, $user ) {
+		$first_name = get_user_meta( $user_id, 'first_name', true );
+		$last_name  = get_user_meta( $user_id, 'last_name', true );
 
-        $success = true;
-        foreach ($synced_groups as $group_name) {
-            if (in_array($group_name, $user->roles)) {
-                if (!$this->api->update_group_membership($cognito_user_id, $group_name, 'add')) {
-                    $success = false;
-                }
-            } else {
-                if (!$this->api->update_group_membership($cognito_user_id, $group_name, 'remove')) {
-                    $success = false;
-                }
-            }
-        }
+		$full_name = trim( $first_name . ' ' . $last_name );
+		if ( empty( $full_name ) ) {
+			$full_name = $user->display_name ?: $user->user_login;
+		}
 
-        return $success;
-    }
+		return array(
+			'wp_user_id'        => $user_id,
+			'email'             => $user->user_email,
+			'username'          => $user->user_login,
+			'firstName'         => $first_name,
+			'lastName'          => $last_name,
+			'name'              => $full_name,
+			'wp_memberrank'     => get_user_meta( $user_id, 'wpuef_cid_c6', true ),
+			'wp_membercategory' => get_user_meta( $user_id, 'wpuef_cid_c10', true ),
+		);
+	}
 
-    public function bulk_sync_users($limit = 50, $offset = 0) {
-        $users = get_users([
-            'number' => $limit,
-            'offset' => $offset,
-            'fields' => 'all'
-        ]);
+	public function sync_user_groups( $user_id ) {
+		$synced_groups = get_option( 'wp_cognito_sync_groups', array() );
+		$user          = get_user_by( 'id', $user_id );
 
-        return $this->process_users_for_sync($users);
-    }
+		if ( ! $user ) {
+			return false;
+		}
 
-    public function bulk_sync_users_by_role($role) {
-        $users = get_users([
-            'role' => $role,
-            'fields' => 'all'
-        ]);
+		$cognito_user_id = get_user_meta( $user_id, 'cognito_user_id', true );
+		if ( empty( $cognito_user_id ) ) {
+			return false;
+		}
 
-        error_log(sprintf('[Cognito Sync] Starting bulk sync for role: %s. Found %d users.', $role, count($users)));
+		$success = true;
+		foreach ( $synced_groups as $group_name ) {
+			if ( in_array( $group_name, $user->roles ) ) {
+				if ( ! $this->api->update_group_membership( $cognito_user_id, $group_name, 'add' ) ) {
+					$success = false;
+				}
+			} elseif ( ! $this->api->update_group_membership( $cognito_user_id, $group_name, 'remove' ) ) {
+					$success = false;
+			}
+		}
 
-        return $this->process_users_for_sync($users);
-    }
+		return $success;
+	}
 
-    private function process_users_for_sync($users) {
-        $stats = [
-            'processed' => 0,
-            'created' => 0,
-            'updated' => 0,
-            'failed' => 0,
-            'errors' => []
-        ];
+	public function bulk_sync_users( $limit = 50, $offset = 0 ) {
+		$users = get_users(
+			array(
+				'number' => $limit,
+				'offset' => $offset,
+				'fields' => 'all',
+			)
+		);
 
-        foreach ($users as $user) {
-            $stats['processed']++;
-            
-            try {
-                $cognito_id = get_user_meta($user->ID, 'cognito_user_id', true);
-                $user_data = $this->prepare_user_data($user->ID, $user);
-                
-                if (empty($cognito_id)) {
-                    $result = $this->api->create_user($user_data);
-                    if ($result) {
-                        $stats['created']++;
-                    } else {
-                        $stats['failed']++;
-                    }
-                } else {
-                    $user_data['cognito_user_id'] = $cognito_id;
-                    $result = $this->api->update_user($user_data);
-                    if ($result) {
-                        $stats['updated']++;
-                    } else {
-                        $stats['failed']++;
-                    }
-                }
-            } catch (\Exception $e) {
-                $stats['failed']++;
-                $stats['errors'][] = sprintf(
-                    'Error processing user %s (%d): %s',
-                    $user->user_email,
-                    $user->ID,
-                    $e->getMessage()
-                );
-                error_log(sprintf(
-                    '[Cognito Sync] Failed to sync user %s (%d): %s',
-                    $user->user_email,
-                    $user->ID,
-                    $e->getMessage()
-                ));
-            }
-        }
+		return $this->process_users_for_sync( $users );
+	}
 
-        error_log(sprintf(
-            '[Cognito Sync] Bulk sync completed. Processed: %d, Created: %d, Updated: %d, Failed: %d',
-            $stats['processed'],
-            $stats['created'],
-            $stats['updated'],
-            $stats['failed']
-        ));
+	public function bulk_sync_users_by_role( $role ) {
+		$users = get_users(
+			array(
+				'role'   => $role,
+				'fields' => 'all',
+			)
+		);
 
-        return $stats;
-    }
+		error_log( sprintf( '[Cognito Sync] Starting bulk sync for role: %s. Found %d users.', $role, count( $users ) ) );
 
-    public function sync_groups() {
-        $synced_groups = get_option('wp_cognito_sync_groups', []);
-        $stats = [
-            'processed' => 0,
-            'created' => 0,
-            'failed' => 0,
-            'errors' => []
-        ];
+		return $this->process_users_for_sync( $users );
+	}
 
-        foreach ($synced_groups as $group_name) {
-            $stats['processed']++;
-            
-            try {
-                $result = $this->api->create_group($group_name);
-                if ($result) {
-                    $stats['created']++;
-                } else {
-                    $stats['failed']++;
-                }
-            } catch (\Exception $e) {
-                $stats['failed']++;
-                $stats['errors'][] = sprintf(
-                    'Error creating group %s: %s',
-                    $group_name,
-                    $e->getMessage()
-                );
-            }
-        }
+	private function process_users_for_sync( $users ) {
+		$stats = array(
+			'processed' => 0,
+			'created'   => 0,
+			'updated'   => 0,
+			'failed'    => 0,
+			'errors'    => array(),
+		);
 
-        return $stats;
-    }
+		foreach ( $users as $user ) {
+			++$stats['processed'];
 
-    public function test_sync_preview($limit = 10) {
-        $users = get_users([
-            'number' => $limit,
-            'fields' => 'all'
-        ]);
+			try {
+				$cognito_id = get_user_meta( $user->ID, 'cognito_user_id', true );
+				$user_data  = $this->prepare_user_data( $user->ID, $user );
 
-        $preview = [
-            'users_to_create' => [],
-            'users_to_update' => [],
-            'users_already_synced' => []
-        ];
+				if ( empty( $cognito_id ) ) {
+					$result = $this->api->create_user( $user_data );
+					if ( $result ) {
+						++$stats['created'];
+					} else {
+						++$stats['failed'];
+					}
+				} else {
+					$user_data['cognito_user_id'] = $cognito_id;
+					$result                       = $this->api->update_user( $user_data );
+					if ( $result ) {
+						++$stats['updated'];
+					} else {
+						++$stats['failed'];
+					}
+				}
+			} catch ( \Exception $e ) {
+				++$stats['failed'];
+				$stats['errors'][] = sprintf(
+					'Error processing user %s (%d): %s',
+					$user->user_email,
+					$user->ID,
+					$e->getMessage()
+				);
+				error_log(
+					sprintf(
+						'[Cognito Sync] Failed to sync user %s (%d): %s',
+						$user->user_email,
+						$user->ID,
+						$e->getMessage()
+					)
+				);
+			}
+		}
 
-        foreach ($users as $user) {
-            $cognito_id = get_user_meta($user->ID, 'cognito_user_id', true);
-            
-            $user_info = [
-                'id' => $user->ID,
-                'email' => $user->user_email,
-                'username' => $user->user_login,
-                'cognito_id' => $cognito_id
-            ];
+		error_log(
+			sprintf(
+				'[Cognito Sync] Bulk sync completed. Processed: %d, Created: %d, Updated: %d, Failed: %d',
+				$stats['processed'],
+				$stats['created'],
+				$stats['updated'],
+				$stats['failed']
+			)
+		);
 
-            if (empty($cognito_id)) {
-                $preview['users_to_create'][] = $user_info;
-            } else {
-                $preview['users_to_update'][] = $user_info;
-            }
-        }
+		return $stats;
+	}
 
-        return $preview;
-    }
+	public function sync_groups() {
+		$synced_groups = get_option( 'wp_cognito_sync_groups', array() );
+		$stats         = array(
+			'processed' => 0,
+			'created'   => 0,
+			'failed'    => 0,
+			'errors'    => array(),
+		);
 
-    public function get_sync_status() {
-        $total_users = count(get_users(['fields' => 'ID']));
-        $synced_users = count(get_users([
-            'meta_key' => 'cognito_user_id',
-            'meta_compare' => 'EXISTS',
-            'fields' => 'ID'
-        ]));
+		foreach ( $synced_groups as $group_name ) {
+			++$stats['processed'];
 
-        $synced_groups = get_option('wp_cognito_sync_groups', []);
-        $available_roles = get_editable_roles();
+			try {
+				$result = $this->api->create_group( $group_name );
+				if ( $result ) {
+					++$stats['created'];
+				} else {
+					++$stats['failed'];
+				}
+			} catch ( \Exception $e ) {
+				++$stats['failed'];
+				$stats['errors'][] = sprintf(
+					'Error creating group %s: %s',
+					$group_name,
+					$e->getMessage()
+				);
+			}
+		}
 
-        return [
-            'users' => [
-                'total' => $total_users,
-                'synced' => $synced_users,
-                'unsynced' => $total_users - $synced_users,
-                'percentage' => $total_users > 0 ? round(($synced_users / $total_users) * 100, 2) : 0
-            ],
-            'groups' => [
-                'available_roles' => count($available_roles),
-                'synced_roles' => count($synced_groups),
-                'enabled_groups' => $synced_groups
-            ]
-        ];
-    }
+		return $stats;
+	}
 
-    public function force_sync_user($user_id) {
-        $user = get_userdata($user_id);
-        if (!$user) {
-            return ['success' => false, 'message' => __('User not found', 'wp-cognito-auth')];
-        }
+	public function test_sync_preview( $limit = 10 ) {
+		$users = get_users(
+			array(
+				'number' => $limit,
+				'fields' => 'all',
+			)
+		);
 
-        try {
-            $cognito_id = get_user_meta($user_id, 'cognito_user_id', true);
-            $user_data = $this->prepare_user_data($user_id, $user);
+		$preview = array(
+			'users_to_create'      => array(),
+			'users_to_update'      => array(),
+			'users_already_synced' => array(),
+		);
 
-            if (empty($cognito_id)) {
-                $result = $this->api->create_user($user_data);
-                $action = 'created';
-            } else {
-                $user_data['cognito_user_id'] = $cognito_id;
-                $result = $this->api->update_user($user_data);
-                $action = 'updated';
-            }
+		foreach ( $users as $user ) {
+			$cognito_id = get_user_meta( $user->ID, 'cognito_user_id', true );
 
-            if ($result) {
-                $features = get_option('wp_cognito_features', []);
-                if (!empty($features['group_sync'])) {
-                    $this->sync_user_groups($user_id);
-                }
-                
-                return [
-                    'success' => true, 
-                    'message' => sprintf(__('User %s in Cognito', 'wp-cognito-auth'), $action)
-                ];
-            } else {
-                return [
-                    'success' => false, 
-                    'message' => __('Failed to sync user to Cognito', 'wp-cognito-auth')
-                ];
-            }
-        } catch (\Exception $e) {
-            return [
-                'success' => false, 
-                'message' => $e->getMessage()
-            ];
-        }
-    }
+			$user_info = array(
+				'id'         => $user->ID,
+				'email'      => $user->user_email,
+				'username'   => $user->user_login,
+				'cognito_id' => $cognito_id,
+			);
+
+			if ( empty( $cognito_id ) ) {
+				$preview['users_to_create'][] = $user_info;
+			} else {
+				$preview['users_to_update'][] = $user_info;
+			}
+		}
+
+		return $preview;
+	}
+
+	public function get_sync_status() {
+		$total_users  = count( get_users( array( 'fields' => 'ID' ) ) );
+		$synced_users = count(
+			get_users(
+				array(
+					'meta_key'     => 'cognito_user_id',
+					'meta_compare' => 'EXISTS',
+					'fields'       => 'ID',
+				)
+			)
+		);
+
+		$synced_groups   = get_option( 'wp_cognito_sync_groups', array() );
+		$available_roles = get_editable_roles();
+
+		return array(
+			'users'  => array(
+				'total'      => $total_users,
+				'synced'     => $synced_users,
+				'unsynced'   => $total_users - $synced_users,
+				'percentage' => $total_users > 0 ? round( ( $synced_users / $total_users ) * 100, 2 ) : 0,
+			),
+			'groups' => array(
+				'available_roles' => count( $available_roles ),
+				'synced_roles'    => count( $synced_groups ),
+				'enabled_groups'  => $synced_groups,
+			),
+		);
+	}
+
+	public function force_sync_user( $user_id ) {
+		$user = get_userdata( $user_id );
+		if ( ! $user ) {
+			return array(
+				'success' => false,
+				'message' => __( 'User not found', 'wp-cognito-auth' ),
+			);
+		}
+
+		try {
+			$cognito_id = get_user_meta( $user_id, 'cognito_user_id', true );
+			$user_data  = $this->prepare_user_data( $user_id, $user );
+
+			if ( empty( $cognito_id ) ) {
+				$result = $this->api->create_user( $user_data );
+				$action = 'created';
+			} else {
+				$user_data['cognito_user_id'] = $cognito_id;
+				$result                       = $this->api->update_user( $user_data );
+				$action                       = 'updated';
+			}
+
+			if ( $result ) {
+				$features = get_option( 'wp_cognito_features', array() );
+				if ( ! empty( $features['group_sync'] ) ) {
+					$this->sync_user_groups( $user_id );
+				}
+
+				return array(
+					'success' => true,
+					'message' => sprintf( __( 'User %s in Cognito', 'wp-cognito-auth' ), $action ),
+				);
+			} else {
+				return array(
+					'success' => false,
+					'message' => __( 'Failed to sync user to Cognito', 'wp-cognito-auth' ),
+				);
+			}
+		} catch ( \Exception $e ) {
+			return array(
+				'success' => false,
+				'message' => $e->getMessage(),
+			);
+		}
+	}
 }

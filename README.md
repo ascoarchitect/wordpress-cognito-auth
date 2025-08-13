@@ -600,6 +600,15 @@ wp-cognito-auth/
 
 ## 📝 Changelog
 
+### Version 2.3.0
+- **Enhanced Error Handling**: Graceful handling of "User already exists" errors during sync operations
+- **Automatic Recovery**: When user creation fails due to existing account, automatically attempts update instead
+- **Improved Sync Logic**: Added detailed logging to identify why users are created vs. updated
+- **Debug Tools**: New methods for formatted log viewing and searching specific error patterns
+- **UI Cleanup**: Removed non-functional "Sync this user to Cognito automatically" checkbox that wasn't being used
+- **Better Logging**: Enhanced sync decision logging to help troubleshoot sync issues
+- **Code Quality**: Fixed trailing whitespace and improved code consistency
+
 ### Version 2.2.0
 - **Complete Group Management System**: Added comprehensive group management functionality with visual interface
 - **Enhanced Bulk Sync Interface**: Completely redesigned bulk sync with better user selection options and form validation
