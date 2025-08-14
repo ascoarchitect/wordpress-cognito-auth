@@ -101,9 +101,6 @@ class API {
 				return false;
 			}
 
-			// Add debug logging for the full response
-			$this->log_message( 'Full API response received: ' . json_encode( $decoded_response, JSON_PRETTY_PRINT ) );
-
 			return $decoded_response;
 		} catch ( \Exception $e ) {
 			$this->log_message( 'Failed to decode response: ' . $e->getMessage(), 'error' );
@@ -123,7 +120,7 @@ class API {
 			// Try to update the existing user instead
 			// Use email as cognito_user_id for the update since we don't have the actual ID yet
 			$user_data['cognito_user_id'] = $user_data['email'];
-			$result                       = $this->update_user_with_cleanup( $user_data );
+			$result                       = $this->update_user( $user_data );
 
 			if ( $result ) {
 				$this->log_message( "Successfully recovered by updating existing Cognito user: {$user_data['email']}" );
@@ -133,9 +130,6 @@ class API {
 				return false;
 			}
 		}
-
-		// Add debugging to see what we're trying to extract
-		$this->log_message( 'Attempting to extract Username from result: ' . json_encode( $result ?? 'NULL', JSON_PRETTY_PRINT ) );
 
 		// Store Cognito User ID if present in response - add safety check
 		// Use sub attribute as it's the standard unique identifier, fallback to Username
@@ -147,7 +141,6 @@ class API {
 				foreach ( $result['result']['User']['Attributes'] as $attr ) {
 					if ( $attr['Name'] === 'sub' ) {
 						$cognito_user_id = $attr['Value'];
-						$this->log_message( "Found sub attribute: {$cognito_user_id}" );
 						break;
 					}
 				}
@@ -156,7 +149,6 @@ class API {
 			// Fallback to Username if sub not found
 			if ( ! $cognito_user_id && isset( $result['result']['User']['Username'] ) ) {
 				$cognito_user_id = $result['result']['User']['Username'];
-				$this->log_message( "Using Username as fallback: {$cognito_user_id}" );
 			}
 
 			if ( $cognito_user_id ) {
@@ -165,17 +157,6 @@ class API {
 			} else {
 				$this->log_message( 'Could not find sub or Username in response', 'error' );
 			}
-		} else {
-			// Log why extraction failed
-			$debug_info = array(
-				'result_exists'    => isset( $result ),
-				'result_is_array'  => is_array( $result ),
-				'result_structure' => ( isset( $result ) && is_array( $result ) ) ? array_keys( $result ) : 'N/A',
-				'has_result_key'   => isset( $result['result'] ),
-				'has_user_key'     => isset( $result['result']['User'] ),
-				'has_wp_user_id'   => isset( $user_data['wp_user_id'] ),
-			);
-			$this->log_message( 'Failed to extract Cognito User ID - Debug info: ' . json_encode( $debug_info ), 'error' );
 		}
 
 		return $result;
@@ -210,25 +191,6 @@ class API {
 			if ( $new_cognito_user_id && isset( $user_data['cognito_user_id'] ) && $new_cognito_user_id !== $user_data['cognito_user_id'] ) {
 				update_user_meta( $user_data['wp_user_id'], 'cognito_user_id', $new_cognito_user_id );
 				$this->log_message( "Lambda created new user - Updated cognito_user_id from {$user_data['cognito_user_id']} to {$new_cognito_user_id} for WordPress user: {$user_data['wp_user_id']}" );
-			}
-		}
-
-		return $result;
-	}
-
-	public function update_user_with_cleanup( $user_data ) {
-		$this->log_message( "Updating user in Cognito with cleanup: {$user_data['email']}" );
-
-		$result = $this->send_to_lambda( 'update', array( 'user' => $user_data ) );
-
-		// If update was successful and we got a proper Username back, update the stored cognito_user_id
-		if ( $result && isset( $result['result']['User']['Username'] ) && isset( $user_data['wp_user_id'] ) ) {
-			$proper_cognito_user_id = $result['result']['User']['Username'];
-
-			// Only update if the returned Username is different from what we stored (i.e., not an email)
-			if ( $proper_cognito_user_id !== $user_data['cognito_user_id'] ) {
-				update_user_meta( $user_data['wp_user_id'], 'cognito_user_id', $proper_cognito_user_id );
-				$this->log_message( "Cleanup complete: Updated cognito_user_id from {$user_data['cognito_user_id']} to {$proper_cognito_user_id} for WordPress user: {$user_data['wp_user_id']}" );
 			}
 		}
 
@@ -350,7 +312,6 @@ class API {
 		// Use GET request to the /test endpoint which returns a simple 200 response
 		$response = wp_remote_get( $test_url, $request_args );
 
-		// Log the raw response for debugging
 		if ( is_wp_error( $response ) ) {
 			$error_message = $response->get_error_message();
 			$this->log_message( "WordPress HTTP Error: {$error_message}", 'error' );
@@ -631,7 +592,6 @@ class API {
 			'created'   => 0,
 			'updated'   => 0,
 			'failed'    => 0,
-			'cleaned'   => 0,
 			'errors'    => array(),
 		);
 
@@ -650,30 +610,13 @@ class API {
 						++$stats['failed'];
 					}
 				} else {
-					// Check if the stored cognito_user_id is actually an email address (cleanup needed)
-					$needs_cleanup = strpos( $cognito_id, '@' ) !== false;
-
-					if ( $needs_cleanup ) {
-						$this->log_message( "Detected email-based cognito_user_id for user {$user->user_email} - performing cleanup via update" );
-
-						// Use the email as the cognito_user_id for the update operation
-						// This will update the existing Cognito user and get back the proper Username
-						$user_data['cognito_user_id'] = $cognito_id; // This is the email
-						$result                       = $this->update_user_with_cleanup( $user_data );
-						if ( $result ) {
-							++$stats['cleaned'];
-						} else {
-							++$stats['failed'];
-						}
+					// Normal update operation
+					$user_data['cognito_user_id'] = $cognito_id;
+					$result                       = $this->update_user( $user_data );
+					if ( $result ) {
+						++$stats['updated'];
 					} else {
-						// Normal update operation
-						$user_data['cognito_user_id'] = $cognito_id;
-						$result                       = $this->update_user( $user_data );
-						if ( $result ) {
-							++$stats['updated'];
-						} else {
-							++$stats['failed'];
-						}
+						++$stats['failed'];
 					}
 				}
 			} catch ( \Exception $e ) {
@@ -698,11 +641,10 @@ class API {
 
 		$this->log_message(
 			sprintf(
-				'Bulk sync completed. Processed: %d, Created: %d, Updated: %d, Cleaned: %d, Failed: %d',
+				'Bulk sync completed. Processed: %d, Created: %d, Updated: %d, Failed: %d',
 				$stats['processed'],
 				$stats['created'],
 				$stats['updated'],
-				$stats['cleaned'],
 				$stats['failed']
 			)
 		);

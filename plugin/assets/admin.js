@@ -117,14 +117,6 @@
                 }
             },
             error: function(xhr, status, error) {
-                console.log('AJAX Error Details:', {
-                    status: status,
-                    error: error,
-                    responseText: xhr.responseText,
-                    statusCode: xhr.status,
-                    statusText: xhr.statusText
-                });
-
                 let errorMessage = 'Connection failed: ' + error;
                 if (xhr.status === 403) {
                     errorMessage = 'WordPress AJAX access denied (403). This might be due to: security plugin restrictions, WP Engine security settings, or nonce verification failure. Try the form-based test below.';

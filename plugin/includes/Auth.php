@@ -61,6 +61,7 @@ class Auth {
 		add_action( 'init', array( $this, 'handle_cognito_callback' ) );
 		add_action( 'init', array( $this, 'handle_cognito_login' ) );
 		add_action( 'init', array( $this, 'handle_logout' ) );
+		add_action( 'init', array( $this, 'handle_reauth_logout' ) );
 		add_action( 'wp_login_form', array( $this, 'add_cognito_login_button' ) );
 		add_action( 'login_form', array( $this, 'add_cognito_login_button' ) ); // Alternative hook
 		add_action( 'login_init', array( $this, 'maybe_redirect_to_cognito' ) );
@@ -175,6 +176,15 @@ class Auth {
 				wp_die( esc_html__( 'Failed to authenticate with Cognito. Please check your configuration and try again.', 'wp-cognito-auth' ) );
 			}
 
+			// Store tokens in session for logout
+			if ( ! session_id() ) {
+				session_start();
+			}
+			$_SESSION['cognito_access_token'] = $tokens['access_token'];
+			if ( isset( $tokens['refresh_token'] ) ) {
+				$_SESSION['cognito_refresh_token'] = $tokens['refresh_token'];
+			}
+
 			// Validate and decode ID token.
 			$user_data = $this->validate_and_decode_token( $tokens['id_token'] );
 			if ( ! $user_data ) {
@@ -248,19 +258,86 @@ class Auth {
 			return;
 		}
 
-		$redirect_to = isset( $_GET['redirect_to'] ) ? wp_unslash( sanitize_url( $_GET['redirect_to'] ) ) : home_url();
+		// Check if there's a forced logout redirect URL configured.
+		$forced_logout_url = get_option( 'wp_cognito_auth_logout_redirect_url' );
+		if ( ! empty( $forced_logout_url ) ) {
+			$redirect_to = $forced_logout_url;
+		} else {
+			// Use default logic for redirect URL.
+			$redirect_to = isset( $_GET['redirect_to'] ) ? $_GET['redirect_to'] : home_url();
+		}
 
 		// Logout from WordPress first.
 		wp_logout();
 
-		// Redirect to Cognito logout.
+		// Check if we have the required Cognito configuration for logout.
+		if ( empty( $this->hosted_ui_domain ) || empty( $this->client_id ) ) {
+			// Fallback to WordPress logout only if Cognito config is missing.
+			wp_redirect( $redirect_to );
+			exit;
+		}
+
+		// Redirect to Cognito logout endpoint.
+		// Note: The logout_uri must be configured as an "Allowed sign-out URL" in the Cognito app client.
 		$logout_params = array(
 			'client_id'  => $this->client_id,
 			'logout_uri' => $redirect_to,
 		);
 
 		$logout_url = "https://{$this->hosted_ui_domain}/logout?" . http_build_query( $logout_params );
-		wp_safe_redirect( $logout_url );
+		
+		// Use wp_redirect instead of wp_safe_redirect for external Cognito URLs
+		wp_redirect( $logout_url );
+		exit;
+	}
+
+	/**
+	 * Handle reauth logout request (from wp-admin logout)
+	 */
+	public function handle_reauth_logout() {
+		// Check if this is a reauth request (WordPress admin logout)
+		if ( ! isset( $_GET['reauth'] ) || '1' !== $_GET['reauth'] ) {
+			return;
+		}
+
+		// Only handle if user is logged in and this is on wp-login.php
+		if ( ! is_user_logged_in() || ! isset( $GLOBALS['pagenow'] ) || 'wp-login.php' !== $GLOBALS['pagenow'] ) {
+			return;
+		}
+
+		// Check if Cognito authentication is configured
+		if ( empty( $this->hosted_ui_domain ) || empty( $this->client_id ) ) {
+			return; // Let WordPress handle normal logout
+		}
+
+		// Get the redirect URL
+		$redirect_to = '';
+		if ( isset( $_GET['redirect_to'] ) ) {
+			$redirect_to = urldecode( wp_unslash( sanitize_text_field( $_GET['redirect_to'] ) ) );
+		}
+
+		// Check if there's a forced logout redirect URL configured.
+		$forced_logout_url = get_option( 'wp_cognito_auth_logout_redirect_url' );
+		if ( ! empty( $forced_logout_url ) ) {
+			$redirect_to = $forced_logout_url;
+		} elseif ( empty( $redirect_to ) ) {
+			$redirect_to = home_url();
+		}
+
+		// Logout from WordPress first.
+		wp_logout();
+
+		// Redirect to Cognito logout endpoint.
+		// Note: The logout_uri must be configured as an "Allowed sign-out URL" in the Cognito app client.
+		$logout_params = array(
+			'client_id'  => $this->client_id,
+			'logout_uri' => $redirect_to,
+		);
+
+		$logout_url = "https://{$this->hosted_ui_domain}/logout?" . http_build_query( $logout_params );
+		
+		// Use wp_redirect instead of wp_safe_redirect for external Cognito URLs
+		wp_redirect( $logout_url );
 		exit;
 	}
 
@@ -276,9 +353,13 @@ class Auth {
 			return $logout_url;
 		}
 
+		// Force redirect to configured logout URL if set.
+		$forced_logout_url = get_option( 'wp_cognito_auth_logout_redirect_url' );
+		$redirect_to = ! empty( $forced_logout_url ) ? $forced_logout_url : ( $redirect ? $redirect : home_url() );
+
 		$args = array(
 			'cognito_logout' => '1',
-			'redirect_to'    => $redirect ? $redirect : home_url(),
+			'redirect_to'    => $redirect_to,
 		);
 
 		return add_query_arg( $args, site_url( '/wp-login.php' ) );
@@ -292,6 +373,7 @@ class Auth {
 		if ( isset( $_SESSION ) ) {
 			unset( $_SESSION['cognito_user_data'] );
 			unset( $_SESSION['cognito_access_token'] );
+			unset( $_SESSION['cognito_refresh_token'] );
 		}
 	}
 

@@ -34,6 +34,7 @@ class Admin {
 			30
 		);
 
+		// Settings (Features tab)
 		add_submenu_page(
 			'wp-cognito-auth',
 			__( 'Settings', 'wp-cognito-auth' ),
@@ -43,22 +44,64 @@ class Admin {
 			array( $this, 'render_main_page' )
 		);
 
+		// Authentication Settings
 		add_submenu_page(
 			'wp-cognito-auth',
-			__( 'User Sync', 'wp-cognito-auth' ),
-			__( 'User Sync', 'wp-cognito-auth' ),
+			__( 'Authentication', 'wp-cognito-auth' ),
+			__( 'Authentication', 'wp-cognito-auth' ),
 			'manage_options',
-			'wp-cognito-auth-sync',
-			array( $this, 'render_sync_page' )
+			'wp-cognito-auth&tab=authentication',
+			array( $this, 'render_main_page' )
 		);
 
+		// Sync Settings
+		add_submenu_page(
+			'wp-cognito-auth',
+			__( 'Sync Settings', 'wp-cognito-auth' ),
+			__( 'Sync Settings', 'wp-cognito-auth' ),
+			'manage_options',
+			'wp-cognito-auth&tab=sync',
+			array( $this, 'render_main_page' )
+		);
+
+		// Bulk Sync
+		add_submenu_page(
+			'wp-cognito-auth',
+			__( 'Bulk Sync', 'wp-cognito-auth' ),
+			__( 'Bulk Sync', 'wp-cognito-auth' ),
+			'manage_options',
+			'wp-cognito-auth&tab=bulk-sync',
+			array( $this, 'render_main_page' )
+		);
+
+		// Group Management
+		add_submenu_page(
+			'wp-cognito-auth',
+			__( 'Group Management', 'wp-cognito-auth' ),
+			__( 'Group Management', 'wp-cognito-auth' ),
+			'manage_options',
+			'wp-cognito-auth&tab=groups',
+			array( $this, 'render_main_page' )
+		);
+
+		// Logs
 		add_submenu_page(
 			'wp-cognito-auth',
 			__( 'Logs', 'wp-cognito-auth' ),
 			__( 'Logs', 'wp-cognito-auth' ),
 			'manage_options',
-			'wp-cognito-auth-logs',
-			array( $this, 'render_logs_page' )
+			'wp-cognito-auth&tab=logs',
+			array( $this, 'render_main_page' )
+		);
+
+		// Setup Guide
+		add_submenu_page(
+			'wp-cognito-auth',
+			__( 'Setup Guide', 'wp-cognito-auth' ),
+			__( 'Setup Guide', 'wp-cognito-auth' ),
+			'manage_options',
+			'wp-cognito-auth&tab=help',
+			array( $this, 'render_main_page' )
 		);
 	}
 
@@ -654,77 +697,6 @@ class Admin {
 				}
 			}
 			?>
-		</div>
-		<?php
-	}
-
-	public function render_sync_page() {
-		?>
-		<div class="wrap">
-			<h1><?php _e( 'User Synchronization', 'wp-cognito-auth' ); ?></h1>
-
-			<div class="cognito-sync-tools">
-				<div class="cognito-card">
-					<h2><?php _e( 'Bulk Sync Operations', 'wp-cognito-auth' ); ?></h2>
-
-					<form method="post" action="<?php echo admin_url( 'admin-post.php' ); ?>">
-						<input type="hidden" name="action" value="cognito_bulk_sync">
-						<?php wp_nonce_field( 'cognito_bulk_sync' ); ?>
-
-						<table class="form-table">
-							<tr>
-								<th scope="row"><?php _e( 'Sync Direction', 'wp-cognito-auth' ); ?></th>
-								<td>
-									<label>
-										<input type="radio" name="sync_direction" value="wp_to_cognito" checked>
-										<?php _e( 'WordPress to Cognito', 'wp-cognito-auth' ); ?>
-									</label><br>
-									<label>
-										<input type="radio" name="sync_direction" value="cognito_to_wp">
-										<?php _e( 'Cognito to WordPress', 'wp-cognito-auth' ); ?>
-									</label>
-								</td>
-							</tr>
-							<tr>
-								<th scope="row"><?php _e( 'User Selection', 'wp-cognito-auth' ); ?></th>
-								<td>
-									<label>
-										<input type="radio" name="user_selection" value="all" checked>
-										<?php _e( 'All Users', 'wp-cognito-auth' ); ?>
-									</label><br>
-									<label>
-										<input type="radio" name="user_selection" value="unlinked">
-										<?php _e( 'Unlinked Users Only', 'wp-cognito-auth' ); ?>
-									</label><br>
-									<label>
-										<input type="radio" name="user_selection" value="role">
-										<?php _e( 'By Role:', 'wp-cognito-auth' ); ?>
-										<select name="selected_role">
-											<?php
-											$roles = get_editable_roles();
-											foreach ( $roles as $role_name => $role_info ) {
-												echo '<option value="' . esc_attr( $role_name ) . '">' . esc_html( $role_info['name'] ) . '</option>';
-											}
-											?>
-										</select>
-									</label>
-								</td>
-							</tr>
-						</table>
-
-						<p class="submit">
-							<button type="submit" class="button button-primary cognito-bulk-sync">
-								<?php _e( 'Start Bulk Sync', 'wp-cognito-auth' ); ?>
-							</button>
-						</p>
-					</form>
-				</div>
-
-				<div class="cognito-card">
-					<h2><?php _e( 'Sync Statistics', 'wp-cognito-auth' ); ?></h2>
-					<?php $this->render_sync_stats(); ?>
-				</div>
-			</div>
 		</div>
 		<?php
 	}
@@ -1381,7 +1353,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 
 			<?php if ( ! empty( $features['group_sync'] ) ) : ?>
 			<div class="cognito-card">
-				<h2><?php _e( 'Group Sync Management', 'wp-cognito-auth' ); ?></h2>
+				<h2><?php _e( 'Wordpress -> Cognito Group Sync Management', 'wp-cognito-auth' ); ?></h2>
 
 				<div class="sync-actions">
 					<div class="sync-action-box">

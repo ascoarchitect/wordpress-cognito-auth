@@ -19,7 +19,6 @@ class Sync {
 			return;
 		}
 
-		$this->api->log_message( "Creating new user in Cognito: {$user->user_email} (WordPress ID: {$user_id})" );
 		$user_data = $this->prepare_user_data( $user_id, $user );
 		$this->api->create_user( $user_data );
 
@@ -42,18 +41,10 @@ class Sync {
 		$cognito_user_id = get_user_meta( $user_id, 'cognito_user_id', true );
 		$user_data       = $this->prepare_user_data( $user_id, $user );
 
-		// Debug logging to understand the decision logic
-		$this->api->log_message(
-			"Sync decision for user {$user->user_email} (ID: {$user_id}): cognito_user_id = " .
-								( $cognito_user_id ? "'{$cognito_user_id}'" : 'EMPTY' )
-		);
-
 		if ( ! empty( $cognito_user_id ) ) {
 			$user_data['cognito_user_id'] = $cognito_user_id;
-			$this->api->log_message( "Performing UPDATE for user {$user->user_email} with cognito_user_id: {$cognito_user_id}" );
 			$this->api->update_user( $user_data );
 		} else {
-			$this->api->log_message( "Performing CREATE for user {$user->user_email} (no cognito_user_id found in WordPress)" );
 			$this->api->create_user( $user_data );
 		}
 
@@ -94,7 +85,6 @@ class Sync {
 			return;
 		}
 
-		$this->api->log_message( "Role change detected for user ID {$user_id}: new role = {$new_role}" );
 		$this->sync_user_groups( $user_id );
 	}
 
@@ -104,12 +94,6 @@ class Sync {
 			return;
 		}
 
-		$user = get_user_by( 'id', $user_id );
-		if ( ! $user ) {
-			return;
-		}
-
-		$this->api->log_message( "Role '{$role}' added to user {$user->user_login} (ID: {$user_id})" );
 		$this->sync_user_groups( $user_id );
 	}
 
@@ -119,12 +103,6 @@ class Sync {
 			return;
 		}
 
-		$user = get_user_by( 'id', $user_id );
-		if ( ! $user ) {
-			return;
-		}
-
-		$this->api->log_message( "Role '{$role}' removed from user {$user->user_login} (ID: {$user_id})" );
 		$this->sync_user_groups( $user_id );
 	}
 
@@ -169,10 +147,6 @@ class Sync {
 			return true;
 		}
 
-		$this->api->log_message( "Starting group sync for user {$user->user_login} (ID: {$user_id}, Cognito ID: {$cognito_user_id})" );
-		$this->api->log_message( "User's current WordPress roles: " . implode( ', ', $user->roles ) );
-		$this->api->log_message( 'Groups configured for sync: ' . implode( ', ', $synced_groups ) );
-
 		$success       = true;
 		$actions_taken = array();
 
@@ -197,9 +171,7 @@ class Sync {
 		}
 
 		if ( ! empty( $actions_taken ) ) {
-			$this->api->log_message( "Group sync actions for user {$user->user_login}: " . implode( ', ', $actions_taken ) );
-		} else {
-			$this->api->log_message( "No group sync actions needed for user {$user->user_login}" );
+			$this->api->log_message( "Group sync completed for user {$user->user_login}: " . implode( ', ', $actions_taken ) );
 		}
 
 		return $success;
@@ -224,8 +196,6 @@ class Sync {
 				'fields' => 'all',
 			)
 		);
-
-		error_log( sprintf( '[Cognito Sync] Starting bulk sync for role: %s. Found %d users.', $role, count( $users ) ) );
 
 		return $this->process_users_for_sync( $users );
 	}
@@ -270,20 +240,12 @@ class Sync {
 					$user->ID,
 					$e->getMessage()
 				);
-				error_log(
-					sprintf(
-						'[Cognito Sync] Failed to sync user %s (%d): %s',
-						$user->user_email,
-						$user->ID,
-						$e->getMessage()
-					)
-				);
 			}
 		}
 
-		error_log(
+		$this->api->log_message(
 			sprintf(
-				'[Cognito Sync] Bulk sync completed. Processed: %d, Created: %d, Updated: %d, Failed: %d',
+				'Bulk sync completed. Processed: %d, Created: %d, Updated: %d, Failed: %d',
 				$stats['processed'],
 				$stats['created'],
 				$stats['updated'],
