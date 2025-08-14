@@ -1,9 +1,28 @@
 <?php
+/**
+ * User management and profile integration for Cognito authentication
+ *
+ * @package WP_Cognito_Auth
+ */
+
 namespace WP_Cognito_Auth;
 
+/**
+ * Class User
+ *
+ * Handles user profile fields, synchronization, and Cognito integration.
+ */
 class User {
+	/**
+	 * Sync component instance
+	 *
+	 * @var Sync
+	 */
 	private $sync;
 
+	/**
+	 * Constructor - Set up user profile hooks and AJAX handlers
+	 */
 	public function __construct() {
 		add_action( 'show_user_profile', array( $this, 'add_cognito_fields' ) );
 		add_action( 'edit_user_profile', array( $this, 'add_cognito_fields' ) );
@@ -15,10 +34,21 @@ class User {
 		add_action( 'wp_ajax_cognito_unlink_user', array( $this, 'ajax_unlink_user' ) );
 	}
 
+	/**
+	 * Set sync instance for user operations
+	 *
+	 * @param Sync $sync Sync component instance.
+	 */
 	public function set_sync( $sync ) {
 		$this->sync = $sync;
 	}
 
+	/**
+	 * Handle user login event for Cognito sync
+	 *
+	 * @param string  $user_login Username.
+	 * @param WP_User $user       User object.
+	 */
 	public function handle_user_login( $user_login, $user ) {
 		try {
 			$features = get_option( 'wp_cognito_features', array() );
@@ -44,6 +74,11 @@ class User {
 		}
 	}
 
+	/**
+	 * Add Cognito-related fields to user profile pages
+	 *
+	 * @param WP_User $user User object being edited.
+	 */
 	public function add_cognito_fields( $user ) {
 		if ( ! current_user_can( 'edit_user', $user->ID ) ) {
 			return;
@@ -346,6 +381,11 @@ class User {
 		<?php
 	}
 
+	/**
+	 * Save Cognito-related user profile fields
+	 *
+	 * @param int $user_id User ID being saved.
+	 */
 	public function save_cognito_fields( $user_id ) {
 		if ( ! current_user_can( 'edit_user', $user_id ) ) {
 			return;
@@ -356,6 +396,9 @@ class User {
 		// Cognito fields are mostly read-only, no save logic needed currently.
 	}
 
+	/**
+	 * AJAX handler to sync a user to Cognito
+	 */
 	public function ajax_sync_user() {
 		check_ajax_referer( 'cognito_sync_user', 'nonce' );
 
@@ -383,6 +426,9 @@ class User {
 		}
 	}
 
+	/**
+	 * AJAX handler to unlink a user from Cognito
+	 */
 	public function ajax_unlink_user() {
 		check_ajax_referer( 'cognito_unlink_user', 'nonce' );
 
@@ -407,6 +453,12 @@ class User {
 		wp_send_json_success( __( 'User unlinked from Cognito successfully', 'wp-cognito-auth' ) );
 	}
 
+	/**
+	 * Get Cognito status information for a user
+	 *
+	 * @param int $user_id User ID to check.
+	 * @return array User's Cognito status information.
+	 */
 	public function get_user_cognito_status( $user_id ) {
 		$cognito_id = get_user_meta( $user_id, 'cognito_user_id', true );
 		$last_sync  = get_user_meta( $user_id, 'cognito_last_sync', true );
@@ -419,6 +471,12 @@ class User {
 		);
 	}
 
+	/**
+	 * Bulk link multiple users to Cognito
+	 *
+	 * @param array $user_ids Array of user IDs to link.
+	 * @return array Results of bulk operation.
+	 */
 	public function bulk_link_users_to_cognito( $user_ids ) {
 		if ( ! current_user_can( 'manage_options' ) || ! $this->sync ) {
 			return false;
@@ -449,6 +507,12 @@ class User {
 		return $results;
 	}
 
+	/**
+	 * Get users who don't have Cognito accounts
+	 *
+	 * @param int $limit Maximum number of users to return.
+	 * @return array Users without Cognito accounts.
+	 */
 	public function get_users_without_cognito( $limit = 50 ) {
 		return get_users(
 			array(
@@ -464,6 +528,12 @@ class User {
 		);
 	}
 
+	/**
+	 * Get users who have Cognito accounts
+	 *
+	 * @param int $limit Maximum number of users to return.
+	 * @return array Users with Cognito accounts.
+	 */
 	public function get_users_with_cognito( $limit = 50 ) {
 		return get_users(
 			array(

@@ -1,7 +1,21 @@
 <?php
+/**
+ * Content filtering and shortcode functionality for Cognito authentication
+ *
+ * @package WP_Cognito_Auth
+ */
+
 namespace WP_Cognito_Auth;
 
+/**
+ * Class ContentFilter
+ *
+ * Handles content filtering, shortcodes, and page access restrictions based on Cognito authentication.
+ */
 class ContentFilter {
+	/**
+	 * Constructor - Set up hooks and shortcodes
+	 */
 	public function __construct() {
 		add_filter( 'the_content', array( $this, 'filter_content' ), 10, 1 );
 		add_action( 'init', array( $this, 'register_shortcodes' ) );
@@ -9,6 +23,9 @@ class ContentFilter {
 		add_action( 'wp_head', array( $this, 'add_cognito_button_styles' ) );
 	}
 
+	/**
+	 * Register shortcodes for Cognito functionality
+	 */
 	public function register_shortcodes() {
 		add_shortcode( 'cognito_restrict', array( $this, 'shortcode_restrict_content' ) );
 		add_shortcode( 'cognito_user_info', array( $this, 'shortcode_user_info' ) );
@@ -16,6 +33,11 @@ class ContentFilter {
 
 	/**
 	 * Shortcode to restrict content by role
+	 *
+	 * @param array  $atts    Shortcode attributes.
+	 * @param string $content Content within shortcode tags.
+	 * @return string Filtered content or access denial message.
+	 *
 	 * Usage: [cognito_restrict roles="administrator,editor"]Content here[/cognito_restrict]
 	 * Usage: [cognito_restrict groups="admin,premium"]Content here[/cognito_restrict]
 	 * Usage: [cognito_restrict login_only="1"]Content here[/cognito_restrict]
@@ -133,6 +155,10 @@ class ContentFilter {
 
 	/**
 	 * Shortcode to display user information
+	 *
+	 * @param array $atts Shortcode attributes.
+	 * @return string User information or default value.
+	 *
 	 * Usage: [cognito_user_info field="first_name"]
 	 */
 	public function shortcode_user_info( $atts ) {
@@ -178,6 +204,9 @@ class ContentFilter {
 
 	/**
 	 * Filter content for [cognito_restrict] shortcodes
+	 *
+	 * @param string $content Post content to filter.
+	 * @return string Processed content.
 	 */
 	public function filter_content( $content ) {
 		// Only process if content contains cognito shortcodes.
@@ -258,6 +287,10 @@ class ContentFilter {
 
 	/**
 	 * Helper function to generate login URL based on force Cognito setting
+	 *
+	 * @param string $redirect_url   URL to redirect to after login.
+	 * @param bool   $include_reauth Whether to include reauthentication parameter.
+	 * @return string Login URL.
 	 */
 	private function get_login_url( $redirect_url, $include_reauth = false ) {
 		$features      = get_option( 'wp_cognito_features', array() );
@@ -281,6 +314,9 @@ class ContentFilter {
 
 	/**
 	 * Helper function to get appropriate button text based on force setting
+	 *
+	 * @param bool $include_different Whether to include "different account" text.
+	 * @return string Login button text.
 	 */
 	private function get_login_button_text( $include_different = false ) {
 		$features      = get_option( 'wp_cognito_features', array() );
@@ -310,6 +346,9 @@ class ContentFilter {
 		}
 	}
 
+	/**
+	 * Redirect user to login page
+	 */
 	private function redirect_to_login() {
 		$current_url = get_permalink();
 		$login_url   = $this->get_login_url( $current_url );
@@ -318,6 +357,9 @@ class ContentFilter {
 		exit;
 	}
 
+	/**
+	 * Show access denied page with re-authentication options
+	 */
 	private function show_access_denied() {
 		$current_url = get_permalink();
 		$reauth_url  = $this->get_login_url( $current_url, true );
@@ -401,6 +443,10 @@ class ContentFilter {
 
 	/**
 	 * Helper function to darken a hex color by a percentage
+	 *
+	 * @param string $hex     Hex color code (with or without #).
+	 * @param int    $percent Percentage to darken (0-100).
+	 * @return string Darkened hex color code.
 	 */
 	private function darken_hex_color( $hex, $percent ) {
 		// Remove # if present.

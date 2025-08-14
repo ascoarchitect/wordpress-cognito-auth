@@ -1,5 +1,7 @@
 /**
  * WordPress Cognito Auth Admin JavaScript
+ *
+ * @package WP_Cognito_Auth
  */
 
 (function($) {

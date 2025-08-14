@@ -1,13 +1,39 @@
 <?php
+/**
+ * User synchronization between WordPress and Amazon Cognito
+ *
+ * @package WP_Cognito_Auth
+ */
+
 namespace WP_Cognito_Auth;
 
+/**
+ * Class Sync
+ *
+ * Handles bidirectional synchronization of users and groups between WordPress and Amazon Cognito.
+ */
 class Sync {
+	/**
+	 * API component instance
+	 *
+	 * @var API
+	 */
 	private $api;
 
+	/**
+	 * Constructor - Initialize sync with API component
+	 *
+	 * @param API $api API component instance.
+	 */
 	public function __construct( $api ) {
 		$this->api = $api;
 	}
 
+	/**
+	 * Handle user creation event for Cognito sync
+	 *
+	 * @param int $user_id WordPress user ID.
+	 */
 	public function on_user_create( $user_id ) {
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['sync'] ) ) {
@@ -27,6 +53,12 @@ class Sync {
 		}
 	}
 
+	/**
+	 * Handle user update event for Cognito sync
+	 *
+	 * @param int     $user_id       WordPress user ID.
+	 * @param WP_User $old_user_data Previous user data (unused).
+	 */
 	public function on_user_update( $user_id, $old_user_data = null ) {
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['sync'] ) ) {
@@ -53,6 +85,11 @@ class Sync {
 		}
 	}
 
+	/**
+	 * Handle user deletion event for Cognito sync
+	 *
+	 * @param int $user_id WordPress user ID.
+	 */
 	public function on_user_delete( $user_id ) {
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['sync'] ) ) {
@@ -79,6 +116,13 @@ class Sync {
 		$this->api->delete_user( $user_data );
 	}
 
+	/**
+	 * Handle user role change event for group sync
+	 *
+	 * @param int    $user_id   WordPress user ID.
+	 * @param string $new_role  New user role (unused).
+	 * @param array  $old_roles Previous user roles (unused).
+	 */
 	public function on_user_role_change( $user_id, $new_role, $old_roles ) {
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['group_sync'] ) ) {
@@ -88,6 +132,12 @@ class Sync {
 		$this->sync_user_groups( $user_id );
 	}
 
+	/**
+	 * Handle user role addition event for group sync
+	 *
+	 * @param int    $user_id WordPress user ID.
+	 * @param string $role    Added role (unused).
+	 */
 	public function on_user_role_added( $user_id, $role ) {
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['group_sync'] ) ) {
@@ -97,6 +147,12 @@ class Sync {
 		$this->sync_user_groups( $user_id );
 	}
 
+	/**
+	 * Handle user role removal event for group sync
+	 *
+	 * @param int    $user_id WordPress user ID.
+	 * @param string $role    Removed role (unused).
+	 */
 	public function on_user_role_removed( $user_id, $role ) {
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['group_sync'] ) ) {
@@ -106,6 +162,13 @@ class Sync {
 		$this->sync_user_groups( $user_id );
 	}
 
+	/**
+	 * Prepare user data for Cognito synchronization
+	 *
+	 * @param int     $user_id WordPress user ID.
+	 * @param WP_User $user    WordPress user object.
+	 * @return array Formatted user data for API.
+	 */
 	private function prepare_user_data( $user_id, $user ) {
 		$first_name = get_user_meta( $user_id, 'first_name', true );
 		$last_name  = get_user_meta( $user_id, 'last_name', true );
@@ -127,6 +190,12 @@ class Sync {
 		);
 	}
 
+	/**
+	 * Synchronize user groups between WordPress and Cognito
+	 *
+	 * @param int $user_id WordPress user ID.
+	 * @return bool Success status.
+	 */
 	public function sync_user_groups( $user_id ) {
 		$synced_groups = get_option( 'wp_cognito_sync_groups', array() );
 		$user          = get_user_by( 'id', $user_id );
@@ -177,6 +246,13 @@ class Sync {
 		return $success;
 	}
 
+	/**
+	 * Bulk synchronize users to Cognito
+	 *
+	 * @param int $limit  Number of users to sync.
+	 * @param int $offset Starting offset for user query.
+	 * @return array Sync results.
+	 */
 	public function bulk_sync_users( $limit = 50, $offset = 0 ) {
 		$users = get_users(
 			array(
@@ -189,6 +265,12 @@ class Sync {
 		return $this->process_users_for_sync( $users );
 	}
 
+	/**
+	 * Bulk synchronize users by specific role to Cognito
+	 *
+	 * @param string $role WordPress user role.
+	 * @return array Sync results.
+	 */
 	public function bulk_sync_users_by_role( $role ) {
 		$users = get_users(
 			array(
@@ -200,6 +282,12 @@ class Sync {
 		return $this->process_users_for_sync( $users );
 	}
 
+	/**
+	 * Process an array of users for synchronization
+	 *
+	 * @param array $users Array of WP_User objects.
+	 * @return array Processing results with success/failure counts.
+	 */
 	private function process_users_for_sync( $users ) {
 		$stats = array(
 			'processed' => 0,
@@ -256,6 +344,11 @@ class Sync {
 		return $stats;
 	}
 
+	/**
+	 * Synchronize WordPress roles to Cognito groups
+	 *
+	 * @return array Sync results.
+	 */
 	public function sync_groups() {
 		$synced_groups = get_option( 'wp_cognito_sync_groups', array() );
 		$stats         = array(
@@ -288,6 +381,12 @@ class Sync {
 		return $stats;
 	}
 
+	/**
+	 * Test sync functionality and return preview of actions
+	 *
+	 * @param int $limit Number of users to include in preview.
+	 * @return array Preview data.
+	 */
 	public function test_sync_preview( $limit = 10 ) {
 		$users = get_users(
 			array(
@@ -322,6 +421,11 @@ class Sync {
 		return $preview;
 	}
 
+	/**
+	 * Get current synchronization status and statistics
+	 *
+	 * @return array Sync status information.
+	 */
 	public function get_sync_status() {
 		$total_users  = count( get_users( array( 'fields' => 'ID' ) ) );
 		$synced_users = count(
@@ -352,6 +456,12 @@ class Sync {
 		);
 	}
 
+	/**
+	 * Force synchronization of a specific user to Cognito
+	 *
+	 * @param int $user_id WordPress user ID.
+	 * @return array Sync result with success status and message.
+	 */
 	public function force_sync_user( $user_id ) {
 		$user = get_userdata( $user_id );
 		if ( ! $user ) {

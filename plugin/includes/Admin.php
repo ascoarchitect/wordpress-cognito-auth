@@ -1,9 +1,23 @@
 <?php
+/**
+ * Admin interface and settings management for Cognito authentication
+ *
+ * @package WP_Cognito_Auth
+ */
+
 namespace WP_Cognito_Auth;
 
+/**
+ * Class Admin
+ *
+ * Handles WordPress admin interface, settings pages, and administrative functionality.
+ */
 class Admin {
 	private $api;
 
+	/**
+	 * Constructor - Set up admin hooks
+	 */
 	public function __construct() {
 		add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
@@ -23,6 +37,9 @@ class Admin {
 		add_action( 'wp_ajax_cognito_test_wp_http', array( $this, 'ajax_test_wp_http' ) );
 	}
 
+	/**
+	 * Add admin menu pages
+	 */
 	public function add_admin_menu() {
 		add_menu_page(
 			__( 'Cognito Auth', 'wp-cognito-auth' ),
@@ -105,6 +122,9 @@ class Admin {
 		);
 	}
 
+	/**
+	 * Register plugin settings with WordPress
+	 */
 	public function register_settings() {
 		// Feature toggles.
 		register_setting(
@@ -137,6 +157,12 @@ class Admin {
 		register_setting( 'wp_cognito_sync_settings', 'wp_cognito_sync_groups' );
 	}
 
+	/**
+	 * Sanitize features settings input
+	 *
+	 * @param array $features Raw features data.
+	 * @return array Sanitized settings.
+	 */
 	public function sanitize_features( $features ) {
 		if ( ! is_array( $features ) ) {
 			return array();

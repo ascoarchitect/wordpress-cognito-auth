@@ -1,15 +1,70 @@
 <?php
+/**
+ * Main plugin class that orchestrates all components
+ *
+ * @package WP_Cognito_Auth
+ */
+
 namespace WP_Cognito_Auth;
 
+/**
+ * Class Plugin
+ *
+ * Main plugin class responsible for initializing and coordinating all plugin components.
+ */
 class Plugin {
+	/**
+	 * Admin component instance
+	 *
+	 * @var Admin
+	 */
 	private $admin;
+
+	/**
+	 * API component instance
+	 *
+	 * @var API
+	 */
 	private $api;
+
+	/**
+	 * Authentication component instance
+	 *
+	 * @var Auth
+	 */
 	private $auth;
+
+	/**
+	 * Sync component instance
+	 *
+	 * @var Sync
+	 */
 	private $sync;
+
+	/**
+	 * User component instance
+	 *
+	 * @var User
+	 */
 	private $user;
+
+	/**
+	 * Content filter component instance
+	 *
+	 * @var ContentFilter
+	 */
 	private $content_filter;
+
+	/**
+	 * Meta box component instance
+	 *
+	 * @var MetaBox
+	 */
 	private $meta_box;
 
+	/**
+	 * Initialize plugin components based on feature settings
+	 */
 	public function init() {
 		try {
 			// Test if we can create the Admin class.
@@ -73,6 +128,9 @@ class Plugin {
 		}
 	}
 
+	/**
+	 * Load plugin text domain for translations
+	 */
 	public function load_textdomain() {
 		load_plugin_textdomain(
 			'wp-cognito-auth',
@@ -81,6 +139,9 @@ class Plugin {
 		);
 	}
 
+	/**
+	 * Set up WordPress hooks for plugin functionality
+	 */
 	private function setup_hooks() {
 		// Sync hooks (if sync is enabled)
 		if ( $this->sync ) {
@@ -104,6 +165,9 @@ class Plugin {
 		add_action( 'wp_ajax_cognito_test_connection', array( $this->admin, 'ajax_test_connection' ) );
 	}
 
+	/**
+	 * Handle Cognito authentication requests
+	 */
 	public function handle_cognito_requests() {
 		// Handle Cognito login initiation.
 		if ( isset( $_GET['cognito_login'] ) && $_GET['cognito_login'] === '1' ) {
@@ -123,6 +187,13 @@ class Plugin {
 		}
 	}
 
+	/**
+	 * Modify logout URL for Cognito users to include proper logout flow
+	 *
+	 * @param string $logout_url Default WordPress logout URL.
+	 * @param string $redirect   Redirect URL after logout.
+	 * @return string Modified logout URL.
+	 */
 	public function modify_logout_url( $logout_url, $redirect ) {
 		if ( ! $this->auth || ! is_user_logged_in() ) {
 			return $logout_url;
@@ -144,6 +215,11 @@ class Plugin {
 		return $logout_url;
 	}
 
+	/**
+	 * Enqueue admin scripts and styles
+	 *
+	 * @param string $hook Current admin page hook.
+	 */
 	public function enqueue_admin_scripts( $hook ) {
 		if ( strpos( $hook, 'cognito-auth' ) === false ) {
 			return;

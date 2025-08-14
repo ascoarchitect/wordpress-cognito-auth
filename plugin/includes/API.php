@@ -1,10 +1,27 @@
 <?php
+/**
+ * API communication and logging functionality for Cognito integration
+ *
+ * @package WP_Cognito_Auth
+ */
+
 namespace WP_Cognito_Auth;
 
+/**
+ * Class API
+ *
+ * Handles communication with Cognito API endpoints and manages operation logging.
+ */
 class API {
 	const LOG_OPTION = 'wp_cognito_sync_logs';
 	const MAX_LOGS   = 100;
 
+	/**
+	 * Log message for debugging and monitoring
+	 *
+	 * @param string $message Log message.
+	 * @param string $level   Log level (info, warning, error).
+	 */
 	public function log_message( $message, $level = 'info' ) {
 		$logs = get_option( self::LOG_OPTION, array() );
 
@@ -39,6 +56,13 @@ class API {
 		return false;
 	}
 
+	/**
+	 * Send data to AWS Lambda function
+	 *
+	 * @param string $action Action to perform.
+	 * @param array  $data   Data to send.
+	 * @return array API response.
+	 */
 	private function send_to_lambda( $action, $data ) {
 		$this->log_message( "Sending request to Lambda: {$action} - " . json_encode( $data ) );
 
@@ -52,6 +76,12 @@ class API {
 		return $response;
 	}
 
+	/**
+	 * Send HTTP request to Cognito API
+	 *
+	 * @param array $data Request data.
+	 * @return array API response.
+	 */
 	private function send_api_request( $data ) {
 		$base_api_url = get_option( 'wp_cognito_sync_api_url' );
 		$api_key      = get_option( 'wp_cognito_sync_api_key' );
@@ -108,6 +138,12 @@ class API {
 		}
 	}
 
+	/**
+	 * Create user in Cognito
+	 *
+	 * @param array $user_data User data to create.
+	 * @return array Creation result.
+	 */
 	public function create_user( $user_data ) {
 		$this->log_message( "Creating user in Cognito: {$user_data['email']}" );
 
@@ -162,6 +198,12 @@ class API {
 		return $result;
 	}
 
+	/**
+	 * Update user in Cognito
+	 *
+	 * @param array $user_data User data to update.
+	 * @return array Update result.
+	 */
 	public function update_user( $user_data ) {
 		$this->log_message( "Updating user in Cognito: {$user_data['email']}" );
 
@@ -197,11 +239,24 @@ class API {
 		return $result;
 	}
 
+	/**
+	 * Delete user from Cognito
+	 *
+	 * @param array $user_data User data for deletion.
+	 * @return array Deletion result.
+	 */
 	public function delete_user( $user_data ) {
 		$this->log_message( "Deleting user from Cognito: {$user_data['email']}" );
 		return $this->send_to_lambda( 'delete', array( 'user' => $user_data ) );
 	}
 
+	/**
+	 * Create group in Cognito
+	 *
+	 * @param string $group_name  Group name.
+	 * @param string $description Group description.
+	 * @return array Creation result.
+	 */
 	public function create_group( $group_name, $description = '' ) {
 		$this->log_message( "Creating group in Cognito: WP_{$group_name}" );
 
@@ -216,6 +271,14 @@ class API {
 		);
 	}
 
+	/**
+	 * Update user group membership in Cognito
+	 *
+	 * @param string $cognito_user_id Cognito user ID.
+	 * @param string $group_name      Group name.
+	 * @param string $operation       Operation (add/remove).
+	 * @return bool Success status.
+	 */
 	public function update_group_membership( $cognito_user_id, $group_name, $operation = 'add' ) {
 		$this->log_message( "Syncing group membership for user {$cognito_user_id} in group WP_{$group_name}: {$operation}" );
 
@@ -231,16 +294,31 @@ class API {
 		);
 	}
 
+	/**
+	 * Get operation logs
+	 *
+	 * @param int $limit Maximum number of logs to return.
+	 * @return array Log entries.
+	 */
 	public function get_logs( $limit = 50 ) {
 		return array_slice( get_option( self::LOG_OPTION, array() ), 0, $limit );
 	}
 
+	/**
+	 * Clear all operation logs
+	 */
 	public function clear_logs() {
 		update_option( self::LOG_OPTION, array() );
 	}
 
 	/**
 	 * Get formatted logs for display - useful for debugging
+	 */
+	/**
+	 * Get formatted logs for display
+	 *
+	 * @param int $limit Maximum number of logs to format.
+	 * @return array Formatted log entries.
 	 */
 	public function get_formatted_logs( $limit = 50 ) {
 		$logs      = $this->get_logs( $limit );
@@ -261,6 +339,13 @@ class API {
 	/**
 	 * Search logs for specific patterns - useful for debugging specific issues
 	 */
+	/**
+	 * Search logs by term
+	 *
+	 * @param string $search_term Term to search for.
+	 * @param int    $limit       Maximum results to return.
+	 * @return array Matching log entries.
+	 */
 	public function search_logs( $search_term, $limit = 100 ) {
 		$logs          = $this->get_logs( $limit );
 		$matching_logs = array();
@@ -274,6 +359,11 @@ class API {
 		return $matching_logs;
 	}
 
+	/**
+	 * Test API connection to Cognito
+	 *
+	 * @return array Test results with success status and details.
+	 */
 	public function test_connection() {
 		$base_api_url = get_option( 'wp_cognito_sync_api_url' );
 		$api_key      = get_option( 'wp_cognito_sync_api_key' );
@@ -374,6 +464,11 @@ class API {
 		}
 	}
 
+	/**
+	 * Get configuration debug information
+	 *
+	 * @return array Debug configuration details.
+	 */
 	public function get_config_debug_info() {
 		$base_api_url = get_option( 'wp_cognito_sync_api_url' );
 		$api_key      = get_option( 'wp_cognito_sync_api_key' );
@@ -561,6 +656,13 @@ class API {
 		return $results;
 	}
 
+	/**
+	 * Bulk synchronize users to Cognito
+	 *
+	 * @param int $limit  Maximum number of users to sync.
+	 * @param int $offset Starting offset for user query.
+	 * @return array Sync results.
+	 */
 	public function bulk_sync_users( $limit = 20, $offset = 0 ) {
 		$users = get_users(
 			array(
@@ -573,6 +675,12 @@ class API {
 		return $this->process_users_for_sync( $users );
 	}
 
+	/**
+	 * Bulk synchronize users by role to Cognito
+	 *
+	 * @param string $role WordPress role to sync.
+	 * @return array Sync results.
+	 */
 	public function bulk_sync_users_by_role( $role ) {
 		$users = get_users(
 			array(
@@ -586,6 +694,12 @@ class API {
 		return $this->process_users_for_sync( $users );
 	}
 
+	/**
+	 * Process array of users for synchronization
+	 *
+	 * @param array $users Array of WP_User objects to process.
+	 * @return array Processing results.
+	 */
 	private function process_users_for_sync( $users ) {
 		$stats = array(
 			'processed' => 0,
@@ -652,6 +766,13 @@ class API {
 		return $stats;
 	}
 
+	/**
+	 * Prepare user data for API synchronization
+	 *
+	 * @param int     $user_id WordPress user ID.
+	 * @param WP_User $user    WordPress user object.
+	 * @return array Formatted user data.
+	 */
 	private function prepare_user_data( $user_id, $user ) {
 		$first_name = get_user_meta( $user_id, 'first_name', true );
 		$last_name  = get_user_meta( $user_id, 'last_name', true );
@@ -673,10 +794,20 @@ class API {
 		);
 	}
 
+	/**
+	 * Get total user count for statistics
+	 *
+	 * @return int Total number of users.
+	 */
 	public function get_user_count() {
 		return count( get_users( array( 'fields' => 'ID' ) ) );
 	}
 
+	/**
+	 * Get synchronization statistics
+	 *
+	 * @return array Sync statistics and metrics.
+	 */
 	public function get_sync_statistics() {
 		$total_users        = $this->get_user_count();
 		$users_with_cognito = count(

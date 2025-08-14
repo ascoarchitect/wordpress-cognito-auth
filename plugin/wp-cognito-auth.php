@@ -47,6 +47,9 @@ spl_autoload_register(
 );
 
 // Initialize the plugin immediately - don't wait for hooks
+/**
+ * Initialize the plugin
+ */
 function wp_cognito_auth_init() {
 	try {
 		$plugin = new WP_Cognito_Auth\Plugin();
