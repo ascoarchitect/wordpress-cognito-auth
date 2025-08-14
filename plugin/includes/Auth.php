@@ -285,7 +285,7 @@ class Auth {
 		);
 
 		$logout_url = "https://{$this->hosted_ui_domain}/logout?" . http_build_query( $logout_params );
-		
+
 		// Use wp_redirect instead of wp_safe_redirect for external Cognito URLs
 		wp_redirect( $logout_url );
 		exit;
@@ -335,7 +335,7 @@ class Auth {
 		);
 
 		$logout_url = "https://{$this->hosted_ui_domain}/logout?" . http_build_query( $logout_params );
-		
+
 		// Use wp_redirect instead of wp_safe_redirect for external Cognito URLs
 		wp_redirect( $logout_url );
 		exit;

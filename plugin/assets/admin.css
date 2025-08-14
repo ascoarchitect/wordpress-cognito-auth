@@ -711,14 +711,14 @@
         font-weight: bold;
         text-align: left;
     }
-}
 
-/* Quick fix for mobile table headers */
-.group-management-container td:nth-child(1):before { content: "WordPress Role"; }
-.group-management-container td:nth-child(2):before { content: "Cognito Group"; }
-.group-management-container td:nth-child(3):before { content: "User Count"; }
-.group-management-container td:nth-child(4):before { content: "Status"; }
-.group-management-container td:nth-child(5):before { content: "Actions"; }
+    /* Mobile table headers */
+    .group-management-container td:nth-child(1):before { content: "WordPress Role: "; }
+    .group-management-container td:nth-child(2):before { content: "Cognito Group: "; }
+    .group-management-container td:nth-child(3):before { content: "User Count: "; }
+    .group-management-container td:nth-child(4):before { content: "Status: "; }
+    .group-management-container td:nth-child(5):before { content: "Actions: "; }
+}
 
 /* Loading states for buttons */
 .button.loading {

@@ -1487,7 +1487,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 									<code><?php echo esc_html( $role_name ); ?></code>
 								</td>
 								<td><code>WP_<?php echo esc_html( $role_name ); ?></code></td>
-								<td><?php echo $user_count; ?> <?php _e( 'users', 'wp-cognito-auth' ); ?></td>
+								<td><?php echo $user_count; ?></td>
 								<td>
 									<?php if ( $is_synced ) : ?>
 										<span class="sync-status enabled"><?php _e( 'Enabled', 'wp-cognito-auth' ); ?></span>
