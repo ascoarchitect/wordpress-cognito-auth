@@ -614,6 +614,22 @@ class Admin {
 									<?php checked( get_option( 'wp_cognito_sync_on_login', false ) ); ?>>
 							<?php esc_html_e( 'Automatically sync user data when they login', 'wp-cognito-auth' ); ?>
 						</label>
+						<p class="description">
+							<?php esc_html_e( 'This option is intended for WordPress-based authentication. If Cognito authentication is enabled, it is recommended to disable this option to avoid duplicate sync events during login.', 'wp-cognito-auth' ); ?>
+						</p>
+						<?php
+						$features = get_option( 'wp_cognito_features', array() );
+						if ( ! empty( $features['authentication'] ) ) :
+							?>
+							<div class="notice notice-warning inline">
+								<p>
+									<strong><?php esc_html_e( 'Notice:', 'wp-cognito-auth' ); ?></strong>
+									<?php esc_html_e( 'Cognito authentication is currently enabled. Consider disabling this option to prevent duplicate sync events on login.', 'wp-cognito-auth' ); ?>
+								</p>
+							</div>
+							<?php
+						endif;
+						?>
 					</td>
 				</tr>
 			</table>
