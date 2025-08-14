@@ -530,10 +530,10 @@ GPL v3 or later
 - [OAuth 2.0 Flows](https://docs.aws.amazon.com/cognito/latest/developerguide/authorization-endpoint.html)
 
 ### Plugin Information
-- **Version**: 2.3.1
+- **Version**: 2.3.2
 - **Author**: Adam Scott
 - **Tested up to**: WordPress 6.6
-- **Stable tag**: 2.2.0
+- **Stable tag**: 2.3.2
 
 For technical support, please check the troubleshooting section above and WordPress debug logs for specific error messages.
 
@@ -599,6 +599,13 @@ wp-cognito-auth/
 - **Regular Rotation**: Rotate Cognito client secrets and API keys regularly
 
 ## 📝 Changelog
+
+### Version 2.3.2
+- **Enhanced Security**: Replaced all `wp_redirect()` calls with `wp_safe_redirect()` for improved security
+- **Allowed Redirect Hosts**: Added Cognito hosted UI domain to WordPress allowed redirect hosts filter
+- **Secure External Redirects**: Maintained functionality for Cognito authentication and logout flows while using secure redirect functions
+- **Code Quality**: Removed outdated comments about using unsafe redirects for external URLs
+- **Security Best Practices**: Now follows WordPress security standards for redirect handling
 
 ### Version 2.3.1
 - **Enhanced Role Synchronization**: Added immediate synchronization for secondary role changes (add_user_role/remove_user_role hooks)
