@@ -54,11 +54,11 @@ class User {
 
 		$features = get_option( 'wp_cognito_features', array() );
 		?>
-		<h3><?php _e( 'Cognito Integration', 'wp-cognito-auth' ); ?></h3>
+		<h3><?php esc_html_e( 'Cognito Integration', 'wp-cognito-auth' ); ?></h3>
 		<table class="form-table cognito-user-fields">
 			<tr>
 				<th>
-					<label for="cognito_user_id"><?php _e( 'Cognito User ID', 'wp-cognito-auth' ); ?></label>
+					<label for="cognito_user_id"><?php esc_html_e( 'Cognito User ID', 'wp-cognito-auth' ); ?></label>
 				</th>
 				<td>
 					<input type="text"
@@ -70,9 +70,9 @@ class User {
 					<p class="description">
 						<?php
 						if ( empty( $cognito_id ) ) {
-							_e( 'No Cognito account linked', 'wp-cognito-auth' );
+							esc_html_e( 'No Cognito account linked', 'wp-cognito-auth' );
 						} else {
-							_e( 'This user is linked to a Cognito account', 'wp-cognito-auth' );
+							esc_html_e( 'This user is linked to a Cognito account', 'wp-cognito-auth' );
 						}
 						?>
 					</p>
@@ -81,24 +81,24 @@ class User {
 
 			<?php if ( ! empty( $features['authentication'] ) ) : ?>
 			<tr>
-				<th><?php _e( 'Authentication Status', 'wp-cognito-auth' ); ?></th>
+				<th><?php esc_html_e( 'Authentication Status', 'wp-cognito-auth' ); ?></th>
 				<td>
 					<div class="cognito-user-status <?php echo ! empty( $cognito_id ) ? 'connected' : 'disconnected'; ?>">
 						<?php if ( ! empty( $cognito_id ) ) : ?>
 							<span class="dashicons dashicons-yes-alt"></span>
-							<span style="color: #46b450;"><?php _e( 'Can login via Cognito', 'wp-cognito-auth' ); ?></span>
+							<span style="color: #46b450;"><?php esc_html_e( 'Can login via Cognito', 'wp-cognito-auth' ); ?></span>
 						<?php else : ?>
 							<span class="dashicons dashicons-warning"></span>
-							<span style="color: #dc3232;"><?php _e( 'WordPress login only', 'wp-cognito-auth' ); ?></span>
+							<span style="color: #dc3232;"><?php esc_html_e( 'WordPress login only', 'wp-cognito-auth' ); ?></span>
 						<?php endif; ?>
 					</div>
 					<?php if ( ! empty( $cognito_id ) ) : ?>
 						<p class="description">
-							<?php _e( 'This user can authenticate using either WordPress login or Cognito SSO.', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'This user can authenticate using either WordPress login or Cognito SSO.', 'wp-cognito-auth' ); ?>
 						</p>
 					<?php else : ?>
 						<p class="description">
-							<?php _e( 'This user can only login using WordPress. Sync to Cognito to enable SSO.', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'This user can only login using WordPress. Sync to Cognito to enable SSO.', 'wp-cognito-auth' ); ?>
 						</p>
 					<?php endif; ?>
 				</td>
@@ -109,26 +109,26 @@ class User {
 				<?php if ( current_user_can( 'manage_options' ) ) : ?>
 					<?php if ( $last_sync ) : ?>
 			<tr>
-				<th><?php _e( 'Last Sync', 'wp-cognito-auth' ); ?></th>
+				<th><?php esc_html_e( 'Last Sync', 'wp-cognito-auth' ); ?></th>
 				<td>
 					<span class="cognito-last-sync">
 						<?php echo wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $last_sync ) ); ?>
 					</span>
 					<p class="description">
-						<?php _e( 'Last time this user was synchronized with Cognito', 'wp-cognito-auth' ); ?>
+						<?php esc_html_e( 'Last time this user was synchronized with Cognito', 'wp-cognito-auth' ); ?>
 					</p>
 				</td>
 			</tr>
 			<?php endif; ?>
 
 			<tr>
-				<th><?php _e( 'Manual Actions', 'wp-cognito-auth' ); ?></th>
+				<th><?php esc_html_e( 'Manual Actions', 'wp-cognito-auth' ); ?></th>
 				<td>
 					<div class="cognito-user-actions">
 						<button type="button"
 								class="button button-secondary cognito-user-sync"
 								data-user-id="<?php echo $user->ID; ?>">
-							<?php _e( 'Sync Now', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'Sync Now', 'wp-cognito-auth' ); ?>
 						</button>
 
 						<?php if ( ! empty( $cognito_id ) ) : ?>
@@ -136,16 +136,16 @@ class User {
 								class="button button-secondary cognito-user-unlink"
 								data-user-id="<?php echo $user->ID; ?>"
 								style="margin-left: 10px;">
-							<?php _e( 'Unlink from Cognito', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'Unlink from Cognito', 'wp-cognito-auth' ); ?>
 						</button>
 						<?php endif; ?>
 					</div>
 
 					<p class="description">
 						<?php if ( empty( $cognito_id ) ) : ?>
-							<?php _e( 'Create this user in Cognito and link accounts', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'Create this user in Cognito and link accounts', 'wp-cognito-auth' ); ?>
 						<?php else : ?>
-							<?php _e( 'Manually synchronize user data or unlink from Cognito', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'Manually synchronize user data or unlink from Cognito', 'wp-cognito-auth' ); ?>
 						<?php endif; ?>
 					</p>
 
@@ -155,7 +155,7 @@ class User {
 
 					<?php if ( ! empty( $features['group_sync'] ) ) : ?>
 			<tr>
-				<th><?php _e( 'Group Membership', 'wp-cognito-auth' ); ?></th>
+				<th><?php esc_html_e( 'Group Membership', 'wp-cognito-auth' ); ?></th>
 				<td>
 						<?php
 						$synced_groups = get_option( 'wp_cognito_sync_groups', array() );
@@ -164,15 +164,15 @@ class User {
 
 						<?php if ( ! empty( $synced_groups ) ) : ?>
 						<div class="cognito-group-status">
-							<h4><?php _e( 'Synced Groups:', 'wp-cognito-auth' ); ?></h4>
+							<h4><?php esc_html_e( 'Synced Groups:', 'wp-cognito-auth' ); ?></h4>
 							<ul>
 								<?php foreach ( $synced_groups as $group ) : ?>
 									<li>
 										<strong>WP_<?php echo esc_html( $group ); ?></strong>
 										<?php if ( in_array( $group, $user_roles ) ) : ?>
-											<span class="sync-status enabled"><?php _e( 'Member', 'wp-cognito-auth' ); ?></span>
+											<span class="sync-status enabled"><?php esc_html_e( 'Member', 'wp-cognito-auth' ); ?></span>
 										<?php else : ?>
-											<span class="sync-status disabled"><?php _e( 'Not Member', 'wp-cognito-auth' ); ?></span>
+											<span class="sync-status disabled"><?php esc_html_e( 'Not Member', 'wp-cognito-auth' ); ?></span>
 										<?php endif; ?>
 									</li>
 								<?php endforeach; ?>
@@ -180,7 +180,7 @@ class User {
 						</div>
 					<?php else : ?>
 						<p class="description">
-							<?php _e( 'No groups are configured for synchronization', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'No groups are configured for synchronization', 'wp-cognito-auth' ); ?>
 						</p>
 					<?php endif; ?>
 				</td>
@@ -200,8 +200,8 @@ class User {
 				var userId = $button.data('user-id');
 				var $result = $('#cognito-user-result-' + userId);
 
-				$button.prop('disabled', true).text('<?php esc_js( _e( 'Syncing...', 'wp-cognito-auth' ) ); ?>');
-				$result.html('<em><?php esc_js( _e( 'Syncing user...', 'wp-cognito-auth' ) ); ?></em>');
+				$button.prop('disabled', true).text('<?php esc_js( __( 'Syncing...', 'wp-cognito-auth' ) ); ?>');
+				$result.html('<em><?php esc_js( __( 'Syncing user...', 'wp-cognito-auth' ) ); ?></em>');
 
 				$.post(ajaxurl, {
 					action: 'cognito_sync_user',
@@ -218,9 +218,9 @@ class User {
 						$result.html('<span style="color: #dc3232;">✗ ' + response.data + '</span>');
 					}
 				}).fail(function() {
-					$result.html('<span style="color: #dc3232;">✗ <?php esc_js( _e( 'Sync request failed', 'wp-cognito-auth' ) ); ?></span>');
+					$result.html('<span style="color: #dc3232;">✗ <?php esc_js( __( 'Sync request failed', 'wp-cognito-auth' ) ); ?></span>');
 				}).always(function() {
-					$button.prop('disabled', false).text('<?php esc_js( _e( 'Sync Now', 'wp-cognito-auth' ) ); ?>');
+					$button.prop('disabled', false).text('<?php esc_js( __( 'Sync Now', 'wp-cognito-auth' ) ); ?>');
 					setTimeout(function() {
 						$result.html('');
 					}, 5000);
@@ -229,7 +229,7 @@ class User {
 
 			// Handle user unlink
 			$('.cognito-user-unlink').on('click', function() {
-				if (!confirm('<?php esc_js( _e( 'Are you sure you want to unlink this user from Cognito? This will not delete the Cognito user.', 'wp-cognito-auth' ) ); ?>')) {
+				if (!confirm('<?php esc_js( __( 'Are you sure you want to unlink this user from Cognito? This will not delete the Cognito user.', 'wp-cognito-auth' ) ); ?>')) {
 					return;
 				}
 
@@ -237,8 +237,8 @@ class User {
 				var userId = $button.data('user-id');
 				var $result = $('#cognito-user-result-' + userId);
 
-				$button.prop('disabled', true).text('<?php esc_js( _e( 'Unlinking...', 'wp-cognito-auth' ) ); ?>');
-				$result.html('<em><?php esc_js( _e( 'Unlinking user...', 'wp-cognito-auth' ) ); ?></em>');
+				$button.prop('disabled', true).text('<?php esc_js( __( 'Unlinking...', 'wp-cognito-auth' ) ); ?>');
+				$result.html('<em><?php esc_js( __( 'Unlinking user...', 'wp-cognito-auth' ) ); ?></em>');
 
 				$.post(ajaxurl, {
 					action: 'cognito_unlink_user',
@@ -255,9 +255,9 @@ class User {
 						$result.html('<span style="color: #dc3232;">✗ ' + response.data + '</span>');
 					}
 				}).fail(function() {
-					$result.html('<span style="color: #dc3232;">✗ <?php esc_js( _e( 'Unlink request failed', 'wp-cognito-auth' ) ); ?></span>');
+					$result.html('<span style="color: #dc3232;">✗ <?php esc_js( __( 'Unlink request failed', 'wp-cognito-auth' ) ); ?></span>');
 				}).always(function() {
-					$button.prop('disabled', false).text('<?php esc_js( _e( 'Unlink from Cognito', 'wp-cognito-auth' ) ); ?>');
+					$button.prop('disabled', false).text('<?php esc_js( __( 'Unlink from Cognito', 'wp-cognito-auth' ) ); ?>');
 					setTimeout(function() {
 						$result.html('');
 					}, 5000);

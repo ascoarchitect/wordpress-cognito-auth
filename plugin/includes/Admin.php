@@ -150,36 +150,36 @@ class Admin {
 		$active_tab = isset( $_GET['tab'] ) ? sanitize_text_field( $_GET['tab'] ) : 'features';
 		?>
 		<div class="wrap">
-			<h1><?php _e( 'Cognito Authentication & Sync', 'wp-cognito-auth' ); ?></h1>
+			<h1><?php esc_html_e( 'Cognito Authentication & Sync', 'wp-cognito-auth' ); ?></h1>
 
 			<h2 class="nav-tab-wrapper">
 				<a href="?page=wp-cognito-auth&tab=features"
 					class="nav-tab <?php echo $active_tab === 'features' ? 'nav-tab-active' : ''; ?>">
-					<?php _e( 'Features', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Features', 'wp-cognito-auth' ); ?>
 				</a>
 				<a href="?page=wp-cognito-auth&tab=authentication"
 					class="nav-tab <?php echo $active_tab === 'authentication' ? 'nav-tab-active' : ''; ?>">
-					<?php _e( 'Authentication Settings', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Authentication Settings', 'wp-cognito-auth' ); ?>
 				</a>
 				<a href="?page=wp-cognito-auth&tab=sync"
 					class="nav-tab <?php echo $active_tab === 'sync' ? 'nav-tab-active' : ''; ?>">
-					<?php _e( 'Sync Settings', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Sync Settings', 'wp-cognito-auth' ); ?>
 				</a>
 				<a href="?page=wp-cognito-auth&tab=bulk-sync"
 					class="nav-tab <?php echo $active_tab === 'bulk-sync' ? 'nav-tab-active' : ''; ?>">
-					<?php _e( 'Bulk Sync', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Bulk Sync', 'wp-cognito-auth' ); ?>
 				</a>
 				<a href="?page=wp-cognito-auth&tab=groups"
 					class="nav-tab <?php echo $active_tab === 'groups' ? 'nav-tab-active' : ''; ?>">
-					<?php _e( 'Group Management', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Group Management', 'wp-cognito-auth' ); ?>
 				</a>
 				<a href="?page=wp-cognito-auth&tab=logs"
 					class="nav-tab <?php echo $active_tab === 'logs' ? 'nav-tab-active' : ''; ?>">
-					<?php _e( 'Logs', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Logs', 'wp-cognito-auth' ); ?>
 				</a>
 				<a href="?page=wp-cognito-auth&tab=help"
 					class="nav-tab <?php echo $active_tab === 'help' ? 'nav-tab-active' : ''; ?>">
-					<?php _e( 'Setup Guide', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Setup Guide', 'wp-cognito-auth' ); ?>
 				</a>
 			</h2>
 
@@ -217,55 +217,55 @@ class Admin {
 		$features = get_option( 'wp_cognito_features', array() );
 		?>
 		<div class="cognito-features">                <div class="cognito-card">
-					<h2><?php _e( 'Enable Features', 'wp-cognito-auth' ); ?></h2>
-					<p><?php _e( 'Choose which Cognito features to enable for your site. You must enable Authentication first to configure Cognito settings.', 'wp-cognito-auth' ); ?></p>
+					<h2><?php esc_html_e( 'Enable Features', 'wp-cognito-auth' ); ?></h2>
+					<p><?php esc_html_e( 'Choose which Cognito features to enable for your site. You must enable Authentication first to configure Cognito settings.', 'wp-cognito-auth' ); ?></p>
 
 					<form method="post" action="options.php">
 						<?php settings_fields( 'wp_cognito_auth_features' ); ?>
 
 						<table class="form-table">
 							<tr>
-								<th scope="row"><?php _e( 'Authentication', 'wp-cognito-auth' ); ?></th>
+								<th scope="row"><?php esc_html_e( 'Authentication', 'wp-cognito-auth' ); ?></th>
 								<td>
 									<label>
 										<input type="checkbox"
 												name="wp_cognito_features[authentication]"
 												value="1"
 												<?php checked( ! empty( $features['authentication'] ) ); ?>>
-										<strong><?php _e( 'Enable Cognito Authentication (JWT/OIDC)', 'wp-cognito-auth' ); ?></strong>
+										<strong><?php esc_html_e( 'Enable Cognito Authentication (JWT/OIDC)', 'wp-cognito-auth' ); ?></strong>
 									</label>
 									<p class="description">
-										<?php _e( 'Allows users to login using Amazon Cognito hosted UI. Enable this first to configure Cognito settings.', 'wp-cognito-auth' ); ?>
+										<?php esc_html_e( 'Allows users to login using Amazon Cognito hosted UI. Enable this first to configure Cognito settings.', 'wp-cognito-auth' ); ?>
 									</p>
 								</td>
 							</tr>
 						<tr>
-							<th scope="row"><?php _e( 'User Sync', 'wp-cognito-auth' ); ?></th>
+							<th scope="row"><?php esc_html_e( 'User Sync', 'wp-cognito-auth' ); ?></th>
 							<td>
 								<label>
 									<input type="checkbox"
 											name="wp_cognito_features[sync]"
 											value="1"
 											<?php checked( ! empty( $features['sync'] ) ); ?>>
-									<?php _e( 'Enable User Synchronization', 'wp-cognito-auth' ); ?>
+									<?php esc_html_e( 'Enable User Synchronization', 'wp-cognito-auth' ); ?>
 								</label>
 								<p class="description">
-									<?php _e( 'Sync WordPress users with Cognito user pool', 'wp-cognito-auth' ); ?>
+									<?php esc_html_e( 'Sync WordPress users with Cognito user pool', 'wp-cognito-auth' ); ?>
 								</p>
 							</td>
 						</tr>
 						<tr>
-							<th scope="row"><?php _e( 'Group Sync', 'wp-cognito-auth' ); ?></th>
+							<th scope="row"><?php esc_html_e( 'Group Sync', 'wp-cognito-auth' ); ?></th>
 							<td>
 								<label>
 									<input type="checkbox"
 											name="wp_cognito_features[group_sync]"
 											value="1"
 											<?php checked( ! empty( $features['group_sync'] ) ); ?>>
-									<?php _e( 'Enable Group/Role Synchronization', 'wp-cognito-auth' ); ?>
+									<?php esc_html_e( 'Enable Group/Role Synchronization', 'wp-cognito-auth' ); ?>
 								</label>
 								<p class="description">
-									<?php _e( 'Sync WordPress roles with Cognito groups', 'wp-cognito-auth' ); ?>
+									<?php esc_html_e( 'Sync WordPress roles with Cognito groups', 'wp-cognito-auth' ); ?>
 								</p>
 							</td>
 						</tr>
@@ -293,7 +293,7 @@ class Admin {
 			<table class="form-table">
 				<tr>
 					<th scope="row">
-						<label for="wp_cognito_auth_user_pool_id"><?php _e( 'User Pool ID', 'wp-cognito-auth' ); ?></label>
+						<label for="wp_cognito_auth_user_pool_id"><?php esc_html_e( 'User Pool ID', 'wp-cognito-auth' ); ?></label>
 					</th>
 					<td>
 						<input type="text"
@@ -302,12 +302,12 @@ class Admin {
 								value="<?php echo esc_attr( get_option( 'wp_cognito_auth_user_pool_id' ) ); ?>"
 								class="regular-text"
 								placeholder="us-east-1_xxxxxxxxx">
-						<p class="description"><?php _e( 'Your Cognito User Pool ID', 'wp-cognito-auth' ); ?></p>
+						<p class="description"><?php esc_html_e( 'Your Cognito User Pool ID', 'wp-cognito-auth' ); ?></p>
 					</td>
 				</tr>
 				<tr>
 					<th scope="row">
-						<label for="wp_cognito_auth_client_id"><?php _e( 'App Client ID', 'wp-cognito-auth' ); ?></label>
+						<label for="wp_cognito_auth_client_id"><?php esc_html_e( 'App Client ID', 'wp-cognito-auth' ); ?></label>
 					</th>
 					<td>
 						<input type="text"
@@ -315,12 +315,12 @@ class Admin {
 								id="wp_cognito_auth_client_id"
 								value="<?php echo esc_attr( get_option( 'wp_cognito_auth_client_id' ) ); ?>"
 								class="regular-text">
-						<p class="description"><?php _e( 'OAuth App Client ID', 'wp-cognito-auth' ); ?></p>
+						<p class="description"><?php esc_html_e( 'OAuth App Client ID', 'wp-cognito-auth' ); ?></p>
 					</td>
 				</tr>
 				<tr>
 					<th scope="row">
-						<label for="wp_cognito_auth_client_secret"><?php _e( 'App Client Secret', 'wp-cognito-auth' ); ?></label>
+						<label for="wp_cognito_auth_client_secret"><?php esc_html_e( 'App Client Secret', 'wp-cognito-auth' ); ?></label>
 					</th>
 					<td>
 						<input type="password"
@@ -328,12 +328,12 @@ class Admin {
 								id="wp_cognito_auth_client_secret"
 								value="<?php echo esc_attr( get_option( 'wp_cognito_auth_client_secret' ) ); ?>"
 								class="regular-text">
-						<p class="description"><?php _e( 'OAuth App Client Secret', 'wp-cognito-auth' ); ?></p>
+						<p class="description"><?php esc_html_e( 'OAuth App Client Secret', 'wp-cognito-auth' ); ?></p>
 					</td>
 				</tr>
 				<tr>
 					<th scope="row">
-						<label for="wp_cognito_auth_region"><?php _e( 'AWS Region', 'wp-cognito-auth' ); ?></label>
+						<label for="wp_cognito_auth_region"><?php esc_html_e( 'AWS Region', 'wp-cognito-auth' ); ?></label>
 					</th>
 					<td>
 						<select name="wp_cognito_auth_region" id="wp_cognito_auth_region">
@@ -361,7 +361,7 @@ class Admin {
 				</tr>
 				<tr>
 					<th scope="row">
-						<label for="wp_cognito_auth_hosted_ui_domain"><?php _e( 'Hosted UI Domain', 'wp-cognito-auth' ); ?></label>
+						<label for="wp_cognito_auth_hosted_ui_domain"><?php esc_html_e( 'Hosted UI Domain', 'wp-cognito-auth' ); ?></label>
 					</th>
 					<td>
 						<input type="text"
@@ -370,27 +370,27 @@ class Admin {
 								value="<?php echo esc_attr( get_option( 'wp_cognito_auth_hosted_ui_domain' ) ); ?>"
 								class="regular-text"
 								placeholder="your-domain.auth.us-east-1.amazoncognito.com">
-						<p class="description"><?php _e( 'Cognito Hosted UI domain (without https://)', 'wp-cognito-auth' ); ?></p>
+						<p class="description"><?php esc_html_e( 'Cognito Hosted UI domain (without https://)', 'wp-cognito-auth' ); ?></p>
 					</td>
 				</tr>
 				<tr>
-					<th scope="row"><?php _e( 'User Creation', 'wp-cognito-auth' ); ?></th>
+					<th scope="row"><?php esc_html_e( 'User Creation', 'wp-cognito-auth' ); ?></th>
 					<td>
 						<label>
 							<input type="checkbox"
 									name="wp_cognito_auth_auto_create_users"
 									value="1"
 									<?php checked( get_option( 'wp_cognito_auth_auto_create_users', true ) ); ?>>
-							<?php _e( 'Auto-create WordPress users from Cognito', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'Auto-create WordPress users from Cognito', 'wp-cognito-auth' ); ?>
 						</label>
 						<p class="description">
-							<?php _e( 'Automatically create WordPress accounts for new Cognito users', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'Automatically create WordPress accounts for new Cognito users', 'wp-cognito-auth' ); ?>
 						</p>
 					</td>
 				</tr>
 				<tr>
 					<th scope="row">
-						<label for="wp_cognito_auth_default_role"><?php _e( 'Default Role', 'wp-cognito-auth' ); ?></label>
+						<label for="wp_cognito_auth_default_role"><?php esc_html_e( 'Default Role', 'wp-cognito-auth' ); ?></label>
 					</th>
 					<td>
 						<select name="wp_cognito_auth_default_role" id="wp_cognito_auth_default_role">
@@ -402,27 +402,27 @@ class Admin {
 							}
 							?>
 						</select>
-						<p class="description"><?php _e( 'Default role for new users created via Cognito', 'wp-cognito-auth' ); ?></p>
+						<p class="description"><?php esc_html_e( 'Default role for new users created via Cognito', 'wp-cognito-auth' ); ?></p>
 					</td>
 				</tr>
 				<tr>
-					<th scope="row"><?php _e( 'Login Behavior', 'wp-cognito-auth' ); ?></th>
+					<th scope="row"><?php esc_html_e( 'Login Behavior', 'wp-cognito-auth' ); ?></th>
 					<td>
 						<label>
 							<input type="checkbox"
 									name="wp_cognito_auth_force_cognito"
 									value="1"
 									<?php checked( get_option( 'wp_cognito_auth_force_cognito', false ) ); ?>>
-							<?php _e( 'Force Cognito authentication (skip WordPress login form)', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'Force Cognito authentication (skip WordPress login form)', 'wp-cognito-auth' ); ?>
 						</label>
 						<p class="description">
-							<?php _e( 'When enabled, users will be automatically redirected to Cognito for authentication instead of seeing the WordPress login form. The WordPress login form will still be accessible via the emergency access parameter shown below.', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'When enabled, users will be automatically redirected to Cognito for authentication instead of seeing the WordPress login form. The WordPress login form will still be accessible via the emergency access parameter shown below.', 'wp-cognito-auth' ); ?>
 						</p>
 					</td>
 				</tr>
 				<tr>
 					<th scope="row">
-						<label for="wp_cognito_auth_login_button_text"><?php _e( 'Login Button Text', 'wp-cognito-auth' ); ?></label>
+						<label for="wp_cognito_auth_login_button_text"><?php esc_html_e( 'Login Button Text', 'wp-cognito-auth' ); ?></label>
 					</th>
 					<td>
 						<input type="text"
@@ -431,12 +431,12 @@ class Admin {
 								value="<?php echo esc_attr( get_option( 'wp_cognito_auth_login_button_text', 'Login with Cognito' ) ); ?>"
 								class="regular-text"
 								placeholder="Login with Cognito">
-						<p class="description"><?php _e( 'Customize the text displayed on the Cognito login button (e.g., "Member Login", "RAFSA Login")', 'wp-cognito-auth' ); ?></p>
+						<p class="description"><?php esc_html_e( 'Customize the text displayed on the Cognito login button (e.g., "Member Login", "RAFSA Login")', 'wp-cognito-auth' ); ?></p>
 					</td>
 				</tr>
 				<tr>
 					<th scope="row">
-						<label for="wp_cognito_auth_login_button_color"><?php _e( 'Login Button Color', 'wp-cognito-auth' ); ?></label>
+						<label for="wp_cognito_auth_login_button_color"><?php esc_html_e( 'Login Button Color', 'wp-cognito-auth' ); ?></label>
 					</th>
 					<td>
 						<input type="color"
@@ -452,22 +452,22 @@ class Admin {
 								placeholder="#ff9900"
 								readonly
 								style="margin-left: 10px; width: 100px;">
-						<p class="description"><?php _e( 'Choose a color for the Cognito login button to match your site\'s branding', 'wp-cognito-auth' ); ?></p>
+						<p class="description"><?php esc_html_e( 'Choose a color for the Cognito login button to match your site\'s branding', 'wp-cognito-auth' ); ?></p>
 
 						<div class="cognito-button-customization">
-							<h4><?php _e( 'Preview', 'wp-cognito-auth' ); ?></h4>
+							<h4><?php esc_html_e( 'Preview', 'wp-cognito-auth' ); ?></h4>
 							<button type="button" class="cognito-login-preview" id="login-button-preview" style="background-color: <?php echo esc_attr( get_option( 'wp_cognito_auth_login_button_color', '#ff9900' ) ); ?> !important; border-color: <?php echo esc_attr( get_option( 'wp_cognito_auth_login_button_color', '#ff9900' ) ); ?> !important; color: <?php echo esc_attr( get_option( 'wp_cognito_auth_login_button_text_color', '#ffffff' ) ); ?> !important; padding: 10px 20px !important; border: 1px solid <?php echo esc_attr( get_option( 'wp_cognito_auth_login_button_color', '#ff9900' ) ); ?> !important; border-radius: 3px !important; text-decoration: none !important; display: inline-block !important; font-size: 14px !important; font-weight: normal !important; text-shadow: none !important; box-shadow: none !important; line-height: normal !important; min-height: auto !important; text-align: center !important; cursor: pointer;">
 								<?php echo esc_html( get_option( 'wp_cognito_auth_login_button_text', 'Login with Cognito' ) ); ?>
 							</button>
 							<p class="description" style="margin-bottom: 0;">
-								<?php _e( 'This preview updates in real-time as you change the settings above.', 'wp-cognito-auth' ); ?>
+								<?php esc_html_e( 'This preview updates in real-time as you change the settings above.', 'wp-cognito-auth' ); ?>
 							</p>
 						</div>
 					</td>
 				</tr>
 				<tr>
 					<th scope="row">
-						<label for="wp_cognito_auth_login_button_text_color"><?php _e( 'Login Button Text Color', 'wp-cognito-auth' ); ?></label>
+						<label for="wp_cognito_auth_login_button_text_color"><?php esc_html_e( 'Login Button Text Color', 'wp-cognito-auth' ); ?></label>
 					</th>
 					<td>
 						<input type="color"
@@ -483,14 +483,14 @@ class Admin {
 								placeholder="#ffffff"
 								readonly
 								style="margin-left: 10px; width: 100px;">
-						<p class="description"><?php _e( 'Choose the text color for the login button (white works well with most background colors)', 'wp-cognito-auth' ); ?></p>
+						<p class="description"><?php esc_html_e( 'Choose the text color for the login button (white works well with most background colors)', 'wp-cognito-auth' ); ?></p>
 					</td>
 				</tr>
 			</table>
 
 			<div class="cognito-emergency-access-info" style="background: #fff2cc; border: 1px solid #ffd966; padding: 15px; margin: 20px 0; border-radius: 5px;">
-				<h3><?php _e( 'Emergency WordPress Access', 'wp-cognito-auth' ); ?></h3>
-				<p><?php _e( 'If Force Cognito Authentication is enabled, you can still access the WordPress login form using this emergency URL:', 'wp-cognito-auth' ); ?></p>
+				<h3><?php esc_html_e( 'Emergency WordPress Access', 'wp-cognito-auth' ); ?></h3>
+				<p><?php esc_html_e( 'If Force Cognito Authentication is enabled, you can still access the WordPress login form using this emergency URL:', 'wp-cognito-auth' ); ?></p>
 				<?php
 				$emergency_param = get_option( 'wp_cognito_emergency_access_param' );
 				if ( $emergency_param ) :
@@ -499,31 +499,31 @@ class Admin {
 					<?php echo esc_html( add_query_arg( $emergency_param, '1', wp_login_url() ) ); ?>
 				</code>
 				<p class="description">
-					<strong style="color: #d63638;"><?php _e( 'Important:', 'wp-cognito-auth' ); ?></strong>
-					<?php _e( 'Save this URL in a secure location. You will need it to access WordPress admin if Cognito authentication fails. This parameter is unique to your installation and cannot be recovered if lost.', 'wp-cognito-auth' ); ?>
+					<strong style="color: #d63638;"><?php esc_html_e( 'Important:', 'wp-cognito-auth' ); ?></strong>
+					<?php esc_html_e( 'Save this URL in a secure location. You will need it to access WordPress admin if Cognito authentication fails. This parameter is unique to your installation and cannot be recovered if lost.', 'wp-cognito-auth' ); ?>
 				</p>
 				<?php else : ?>
 				<p style="color: #d63638;">
-					<?php _e( 'Emergency access parameter not found. Please deactivate and reactivate the plugin to generate one.', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Emergency access parameter not found. Please deactivate and reactivate the plugin to generate one.', 'wp-cognito-auth' ); ?>
 				</p>
 				<?php endif; ?>
 			</div>
 
 			<div class="cognito-callback-info" style="background: #f0f8ff; border: 1px solid #b3d9ff; padding: 15px; margin: 20px 0; border-radius: 5px;">
-				<h3><?php _e( 'Callback URL Configuration', 'wp-cognito-auth' ); ?></h3>
-				<p><?php _e( 'Add this URL to your Cognito App Client\'s "Allowed callback URLs":', 'wp-cognito-auth' ); ?></p>
+				<h3><?php esc_html_e( 'Callback URL Configuration', 'wp-cognito-auth' ); ?></h3>
+				<p><?php esc_html_e( 'Add this URL to your Cognito App Client\'s "Allowed callback URLs":', 'wp-cognito-auth' ); ?></p>
 				<code style="background: white; padding: 10px; display: block; border: 1px solid #ddd; margin: 10px 0;">
 					<?php echo esc_html( add_query_arg( 'cognito_callback', '1', home_url( '/wp-login.php' ) ) ); ?>
 				</code>
 				<p class="description">
-					<?php _e( 'Go to AWS Console → Cognito → User Pools → Your Pool → App integration → Your App Client → Edit Hosted UI → Add this URL to "Allowed callback URLs"', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Go to AWS Console → Cognito → User Pools → Your Pool → App integration → Your App Client → Edit Hosted UI → Add this URL to "Allowed callback URLs"', 'wp-cognito-auth' ); ?>
 				</p>
 			</div>
 
 			<div class="cognito-test-section">
-				<h3><?php _e( 'Test Connection', 'wp-cognito-auth' ); ?></h3>
+				<h3><?php esc_html_e( 'Test Connection', 'wp-cognito-auth' ); ?></h3>
 				<button type="button" id="test-cognito-connection" class="button button-secondary">
-					<?php _e( 'Test Cognito Connection', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Test Cognito Connection', 'wp-cognito-auth' ); ?>
 				</button>
 				<div id="test-results" style="margin-top: 10px;"></div>
 			</div>
@@ -548,7 +548,7 @@ class Admin {
 			<table class="form-table">
 				<tr>
 					<th scope="row">
-						<label for="wp_cognito_sync_api_url"><?php _e( 'Sync API URL', 'wp-cognito-auth' ); ?></label>
+						<label for="wp_cognito_sync_api_url"><?php esc_html_e( 'Sync API URL', 'wp-cognito-auth' ); ?></label>
 					</th>
 					<td>
 						<input type="url"
@@ -558,16 +558,16 @@ class Admin {
 								class="regular-text"
 								placeholder="https://your-api-gateway.execute-api.region.amazonaws.com/prod">
 						<p class="description">
-							<?php _e( 'Lambda/API Gateway URL for user synchronization. Can end with either /sync or just the stage name (e.g., /prod). The plugin will handle the correct endpoint routing.', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'Lambda/API Gateway URL for user synchronization. Can end with either /sync or just the stage name (e.g., /prod). The plugin will handle the correct endpoint routing.', 'wp-cognito-auth' ); ?>
 							<br>
-							<strong><?php _e( 'Example:', 'wp-cognito-auth' ); ?></strong>
+							<strong><?php esc_html_e( 'Example:', 'wp-cognito-auth' ); ?></strong>
 							<code>https://abc123def4.execute-api.us-west-2.amazonaws.com/prod</code>
 						</p>
 					</td>
 				</tr>
 				<tr>
 					<th scope="row">
-						<label for="wp_cognito_sync_api_key"><?php _e( 'API Key', 'wp-cognito-auth' ); ?></label>
+						<label for="wp_cognito_sync_api_key"><?php esc_html_e( 'API Key', 'wp-cognito-auth' ); ?></label>
 					</th>
 					<td>
 						<input type="password"
@@ -575,35 +575,35 @@ class Admin {
 								id="wp_cognito_sync_api_key"
 								value="<?php echo esc_attr( get_option( 'wp_cognito_sync_api_key' ) ); ?>"
 								class="regular-text">
-						<p class="description"><?php _e( 'API Gateway API Key for authentication', 'wp-cognito-auth' ); ?></p>
+						<p class="description"><?php esc_html_e( 'API Gateway API Key for authentication', 'wp-cognito-auth' ); ?></p>
 					</td>
 				</tr>
 				<tr>
-					<th scope="row"><?php _e( 'Sync on Login', 'wp-cognito-auth' ); ?></th>
+					<th scope="row"><?php esc_html_e( 'Sync on Login', 'wp-cognito-auth' ); ?></th>
 					<td>
 						<label>
 							<input type="checkbox"
 									name="wp_cognito_sync_on_login"
 									value="1"
 									<?php checked( get_option( 'wp_cognito_sync_on_login', false ) ); ?>>
-							<?php _e( 'Automatically sync user data when they login', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'Automatically sync user data when they login', 'wp-cognito-auth' ); ?>
 						</label>
 					</td>
 				</tr>
 			</table>
 
 			<div class="cognito-test-section">
-				<h3><?php _e( 'Test Sync Connection', 'wp-cognito-auth' ); ?></h3>
+				<h3><?php esc_html_e( 'Test Sync Connection', 'wp-cognito-auth' ); ?></h3>
 
 				<!-- AJAX Test Button -->
 				<button type="button" id="test-sync-connection" class="button button-secondary">
-					<?php _e( 'Test Sync API Connection (AJAX)', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Test Sync API Connection (AJAX)', 'wp-cognito-auth' ); ?>
 				</button>
 				<div id="sync-test-results" style="margin-top: 10px;"></div>
 
 				<?php if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) : ?>
 				<div class="debug-info" style="margin-top: 20px; padding: 15px; background: #f9f9f9; border: 1px solid #ddd;">
-					<h4><?php _e( 'Debug Information', 'wp-cognito-auth' ); ?></h4>
+					<h4><?php esc_html_e( 'Debug Information', 'wp-cognito-auth' ); ?></h4>
 					<?php
 					if ( ! $this->api ) {
 						$this->api = new API();
@@ -613,41 +613,41 @@ class Admin {
 					<table class="widefat">
 						<tbody>
 							<tr>
-								<th><?php _e( 'API URL Setting', 'wp-cognito-auth' ); ?></th>
+								<th><?php esc_html_e( 'API URL Setting', 'wp-cognito-auth' ); ?></th>
 								<td><code><?php echo esc_html( $debug_info['base_url_setting'] ?: 'Not set' ); ?></code></td>
 							</tr>
 							<tr>
-								<th><?php _e( 'Calculated Base URL', 'wp-cognito-auth' ); ?></th>
+								<th><?php esc_html_e( 'Calculated Base URL', 'wp-cognito-auth' ); ?></th>
 								<td><code><?php echo esc_html( $debug_info['calculated_base_url'] ?: 'Not calculated' ); ?></code></td>
 							</tr>
 							<tr>
-								<th><?php _e( 'Test URL', 'wp-cognito-auth' ); ?></th>
+								<th><?php esc_html_e( 'Test URL', 'wp-cognito-auth' ); ?></th>
 								<td><code><?php echo esc_html( $debug_info['test_url'] ?: 'Not available' ); ?></code></td>
 							</tr>
 							<tr>
-								<th><?php _e( 'Sync URL', 'wp-cognito-auth' ); ?></th>
+								<th><?php esc_html_e( 'Sync URL', 'wp-cognito-auth' ); ?></th>
 								<td><code><?php echo esc_html( $debug_info['sync_url'] ?: 'Not available' ); ?></code></td>
 							</tr>
 							<tr>
-								<th><?php _e( 'API Key Status', 'wp-cognito-auth' ); ?></th>
+								<th><?php esc_html_e( 'API Key Status', 'wp-cognito-auth' ); ?></th>
 								<td><?php echo $debug_info['api_key_set'] ? '<span style="color: green;">✓ Set</span>' : '<span style="color: red;">✗ Not set</span>'; ?></td>
 							</tr>
 							<?php if ( $debug_info['api_key_set'] ) : ?>
 							<tr>
-								<th><?php _e( 'API Key Preview', 'wp-cognito-auth' ); ?></th>
+								<th><?php esc_html_e( 'API Key Preview', 'wp-cognito-auth' ); ?></th>
 								<td><code><?php echo esc_html( $debug_info['api_key_prefix'] ); ?></code></td>
 							</tr>
 							<?php endif; ?>
 						</tbody>
 					</table>
 					<p class="description">
-						<?php _e( 'This debug information is only shown when WP_DEBUG is enabled. Check the sync logs below for detailed connection attempt information.', 'wp-cognito-auth' ); ?>
+						<?php esc_html_e( 'This debug information is only shown when WP_DEBUG is enabled. Check the sync logs below for detailed connection attempt information.', 'wp-cognito-auth' ); ?>
 					</p>
 				</div>
 				<?php endif; ?>
 
 				<p class="description" style="margin-top: 15px;">
-					<?php _e( 'For group management and bulk synchronization operations, use the dedicated tabs above.', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'For group management and bulk synchronization operations, use the dedicated tabs above.', 'wp-cognito-auth' ); ?>
 				</p>
 			</div>
 
@@ -656,13 +656,13 @@ class Admin {
 
 		<!-- Separate Form-based Test (outside main form to avoid nesting) -->
 		<div class="cognito-test-section" style="margin-top: 20px;">
-			<h3><?php _e( 'Alternative Test Method', 'wp-cognito-auth' ); ?></h3>
-			<p class="description"><?php _e( 'If the AJAX test above doesn\'t work, try this form-based test:', 'wp-cognito-auth' ); ?></p>
+			<h3><?php esc_html_e( 'Alternative Test Method', 'wp-cognito-auth' ); ?></h3>
+			<p class="description"><?php esc_html_e( 'If the AJAX test above doesn\'t work, try this form-based test:', 'wp-cognito-auth' ); ?></p>
 			<form method="post" action="<?php echo admin_url( 'admin-post.php' ); ?>" style="margin-bottom: 20px;">
 				<?php wp_nonce_field( 'cognito_sync_test_form' ); ?>
 				<input type="hidden" name="action" value="cognito_sync_test_form">
 				<button type="submit" class="button button-secondary">
-					<?php _e( 'Test Sync API Connection (Form)', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Test Sync API Connection (Form)', 'wp-cognito-auth' ); ?>
 				</button>
 			</form>
 
@@ -705,30 +705,30 @@ class Admin {
 		$logs = get_option( 'wp_cognito_sync_logs', array() );
 		?>
 		<div class="wrap">
-			<h1><?php _e( 'Synchronization Logs', 'wp-cognito-auth' ); ?></h1>
+			<h1><?php esc_html_e( 'Synchronization Logs', 'wp-cognito-auth' ); ?></h1>
 
 			<div class="cognito-logs">
 				<div class="logs-controls">
 					<label>
 						<input type="checkbox" class="logs-auto-refresh">
-						<?php _e( 'Auto-refresh (every 30 seconds)', 'wp-cognito-auth' ); ?>
+						<?php esc_html_e( 'Auto-refresh (every 30 seconds)', 'wp-cognito-auth' ); ?>
 					</label>
 
 					<button type="button" class="button cognito-clear-logs">
-						<?php _e( 'Clear Logs', 'wp-cognito-auth' ); ?>
+						<?php esc_html_e( 'Clear Logs', 'wp-cognito-auth' ); ?>
 					</button>
 				</div>
 
 				<div class="logs-container">
 					<?php if ( empty( $logs ) ) : ?>
-						<p><?php _e( 'No synchronization logs available.', 'wp-cognito-auth' ); ?></p>
+						<p><?php esc_html_e( 'No synchronization logs available.', 'wp-cognito-auth' ); ?></p>
 					<?php else : ?>
 						<table class="wp-list-table widefat fixed striped">
 							<thead>
 								<tr>
-									<th scope="col"><?php _e( 'Timestamp', 'wp-cognito-auth' ); ?></th>
-									<th scope="col"><?php _e( 'Level', 'wp-cognito-auth' ); ?></th>
-									<th scope="col"><?php _e( 'Message', 'wp-cognito-auth' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Timestamp', 'wp-cognito-auth' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Level', 'wp-cognito-auth' ); ?></th>
+									<th scope="col"><?php esc_html_e( 'Message', 'wp-cognito-auth' ); ?></th>
 								</tr>
 							</thead>
 							<tbody>
@@ -872,19 +872,19 @@ class Admin {
 		<table class="wp-list-table widefat">
 			<tbody>
 				<tr>
-					<td><?php _e( 'Total WordPress Users', 'wp-cognito-auth' ); ?></td>
+					<td><?php esc_html_e( 'Total WordPress Users', 'wp-cognito-auth' ); ?></td>
 					<td><strong><?php echo esc_html( $total_users ); ?></strong></td>
 				</tr>
 				<tr>
-					<td><?php _e( 'Linked to Cognito', 'wp-cognito-auth' ); ?></td>
+					<td><?php esc_html_e( 'Linked to Cognito', 'wp-cognito-auth' ); ?></td>
 					<td><strong><?php echo esc_html( $linked_users ); ?></strong></td>
 				</tr>
 				<tr>
-					<td><?php _e( 'Not Linked', 'wp-cognito-auth' ); ?></td>
+					<td><?php esc_html_e( 'Not Linked', 'wp-cognito-auth' ); ?></td>
 					<td><strong><?php echo esc_html( $unlinked_users ); ?></strong></td>
 				</tr>
 				<tr>
-					<td><?php _e( 'Last Sync', 'wp-cognito-auth' ); ?></td>
+					<td><?php esc_html_e( 'Last Sync', 'wp-cognito-auth' ); ?></td>
 					<td><?php echo esc_html( get_option( 'wp_cognito_last_sync', __( 'Never', 'wp-cognito-auth' ) ) ); ?></td>
 				</tr>
 			</tbody>
@@ -975,10 +975,10 @@ class Admin {
 				?>
 				<div class="notice notice-warning">
 					<p>
-						<strong><?php _e( 'Cognito Authentication Incomplete', 'wp-cognito-auth' ); ?></strong><br>
-						<?php _e( 'Cognito authentication is enabled but not fully configured. Please complete the setup in the', 'wp-cognito-auth' ); ?>
+						<strong><?php esc_html_e( 'Cognito Authentication Incomplete', 'wp-cognito-auth' ); ?></strong><br>
+						<?php esc_html_e( 'Cognito authentication is enabled but not fully configured. Please complete the setup in the', 'wp-cognito-auth' ); ?>
 						<a href="<?php echo admin_url( 'admin.php?page=wp-cognito-auth&tab=authentication' ); ?>">
-							<?php _e( 'Authentication Settings', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'Authentication Settings', 'wp-cognito-auth' ); ?>
 						</a>
 					</p>
 				</div>
@@ -991,10 +991,10 @@ class Admin {
 					?>
 					<div class="notice notice-info">
 						<p>
-							<strong><?php _e( 'Cognito Login Active', 'wp-cognito-auth' ); ?></strong><br>
-							<?php _e( 'Users will be automatically redirected to Cognito for authentication. For emergency WordPress login, use the emergency access URL found in the', 'wp-cognito-auth' ); ?>
+							<strong><?php esc_html_e( 'Cognito Login Active', 'wp-cognito-auth' ); ?></strong><br>
+							<?php esc_html_e( 'Users will be automatically redirected to Cognito for authentication. For emergency WordPress login, use the emergency access URL found in the', 'wp-cognito-auth' ); ?>
 							<a href="<?php echo admin_url( 'admin.php?page=wp-cognito-auth&tab=authentication' ); ?>">
-								<?php _e( 'Authentication Settings', 'wp-cognito-auth' ); ?>
+								<?php esc_html_e( 'Authentication Settings', 'wp-cognito-auth' ); ?>
 							</a>
 						</p>
 					</div>
@@ -1145,130 +1145,130 @@ class Admin {
 	private function render_help_tab() {
 		?>
 		<div class="wrap">
-			<h2><?php _e( 'Help & Documentation', 'wp-cognito-auth' ); ?></h2>
+			<h2><?php esc_html_e( 'Help & Documentation', 'wp-cognito-auth' ); ?></h2>
 
 			<div class="card">
-				<h3><?php _e( 'Plugin Setup Guide', 'wp-cognito-auth' ); ?></h3>
-				<p><?php _e( 'Follow these steps to configure AWS Cognito with your WordPress site:', 'wp-cognito-auth' ); ?></p>
+				<h3><?php esc_html_e( 'Plugin Setup Guide', 'wp-cognito-auth' ); ?></h3>
+				<p><?php esc_html_e( 'Follow these steps to configure AWS Cognito with your WordPress site:', 'wp-cognito-auth' ); ?></p>
 
 				<ol>
-					<li><strong><?php _e( 'Create AWS Cognito User Pool', 'wp-cognito-auth' ); ?></strong>
+					<li><strong><?php esc_html_e( 'Create AWS Cognito User Pool', 'wp-cognito-auth' ); ?></strong>
 						<ul>
-							<li><?php _e( 'Log into AWS Console and navigate to Cognito', 'wp-cognito-auth' ); ?></li>
-							<li><?php _e( 'Create a new User Pool', 'wp-cognito-auth' ); ?></li>
-							<li><?php _e( 'Configure sign-in options (email recommended)', 'wp-cognito-auth' ); ?></li>
+							<li><?php esc_html_e( 'Log into AWS Console and navigate to Cognito', 'wp-cognito-auth' ); ?></li>
+							<li><?php esc_html_e( 'Create a new User Pool', 'wp-cognito-auth' ); ?></li>
+							<li><?php esc_html_e( 'Configure sign-in options (email recommended)', 'wp-cognito-auth' ); ?></li>
 						</ul>
 					</li>
 
-					<li><strong><?php _e( 'Configure App Client', 'wp-cognito-auth' ); ?></strong>
+					<li><strong><?php esc_html_e( 'Configure App Client', 'wp-cognito-auth' ); ?></strong>
 						<ul>
-							<li><?php _e( 'Add an App client in your User Pool', 'wp-cognito-auth' ); ?></li>
-							<li><?php _e( 'Enable "Generate client secret"', 'wp-cognito-auth' ); ?></li>
-							<li><?php _e( 'Configure OAuth flows: Authorization code grant', 'wp-cognito-auth' ); ?></li>
-							<li><?php _e( 'Add callback URL:', 'wp-cognito-auth' ); ?> <code><?php echo esc_url( home_url( '/wp-login.php?cognito_callback=1' ) ); ?></code></li>
+							<li><?php esc_html_e( 'Add an App client in your User Pool', 'wp-cognito-auth' ); ?></li>
+							<li><?php esc_html_e( 'Enable "Generate client secret"', 'wp-cognito-auth' ); ?></li>
+							<li><?php esc_html_e( 'Configure OAuth flows: Authorization code grant', 'wp-cognito-auth' ); ?></li>
+							<li><?php esc_html_e( 'Add callback URL:', 'wp-cognito-auth' ); ?> <code><?php echo esc_url( home_url( '/wp-login.php?cognito_callback=1' ) ); ?></code></li>
 						</ul>
 					</li>
 
-					<li><strong><?php _e( 'Set up Hosted UI Domain', 'wp-cognito-auth' ); ?></strong>
+					<li><strong><?php esc_html_e( 'Set up Hosted UI Domain', 'wp-cognito-auth' ); ?></strong>
 						<ul>
-							<li><?php _e( 'Configure a domain for Cognito Hosted UI', 'wp-cognito-auth' ); ?></li>
-							<li><?php _e( 'Add sign out URLs including your WordPress site URL', 'wp-cognito-auth' ); ?></li>
+							<li><?php esc_html_e( 'Configure a domain for Cognito Hosted UI', 'wp-cognito-auth' ); ?></li>
+							<li><?php esc_html_e( 'Add sign out URLs including your WordPress site URL', 'wp-cognito-auth' ); ?></li>
 						</ul>
 					</li>
 
-					<li><strong><?php _e( 'Configure Plugin Settings', 'wp-cognito-auth' ); ?></strong>
+					<li><strong><?php esc_html_e( 'Configure Plugin Settings', 'wp-cognito-auth' ); ?></strong>
 						<ul>
-							<li><?php _e( 'Go to Settings > Authentication tab', 'wp-cognito-auth' ); ?></li>
-							<li><?php _e( 'Enter your User Pool ID, Client ID, Client Secret, and Region', 'wp-cognito-auth' ); ?></li>
-							<li><?php _e( 'Test the connection using the "Test Connection" button', 'wp-cognito-auth' ); ?></li>
+							<li><?php esc_html_e( 'Go to Settings > Authentication tab', 'wp-cognito-auth' ); ?></li>
+							<li><?php esc_html_e( 'Enter your User Pool ID, Client ID, Client Secret, and Region', 'wp-cognito-auth' ); ?></li>
+							<li><?php esc_html_e( 'Test the connection using the "Test Connection" button', 'wp-cognito-auth' ); ?></li>
 						</ul>
 					</li>
 				</ol>
 			</div>
 
 			<div class="card">
-				<h3><?php _e( 'Features Overview', 'wp-cognito-auth' ); ?></h3>
+				<h3><?php esc_html_e( 'Features Overview', 'wp-cognito-auth' ); ?></h3>
 
-				<h4><?php _e( 'Authentication', 'wp-cognito-auth' ); ?></h4>
-				<p><?php _e( 'Allows users to log in using AWS Cognito instead of WordPress authentication.', 'wp-cognito-auth' ); ?></p>
+				<h4><?php esc_html_e( 'Authentication', 'wp-cognito-auth' ); ?></h4>
+				<p><?php esc_html_e( 'Allows users to log in using AWS Cognito instead of WordPress authentication.', 'wp-cognito-auth' ); ?></p>
 				<ul>
-					<li><?php _e( 'Option to force all logins through Cognito', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Automatic user creation from Cognito data', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Configurable default user role', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Option to force all logins through Cognito', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Automatic user creation from Cognito data', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Configurable default user role', 'wp-cognito-auth' ); ?></li>
 				</ul>
 
-				<h4><?php _e( 'User Sync', 'wp-cognito-auth' ); ?></h4>
-				<p><?php _e( 'Synchronizes user data and group memberships between Cognito and WordPress.', 'wp-cognito-auth' ); ?></p>
+				<h4><?php esc_html_e( 'User Sync', 'wp-cognito-auth' ); ?></h4>
+				<p><?php esc_html_e( 'Synchronizes user data and group memberships between Cognito and WordPress.', 'wp-cognito-auth' ); ?></p>
 				<ul>
-					<li><?php _e( 'Maps Cognito groups to WordPress roles', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Syncs user profile information', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Custom field mapping support', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Automatic real-time role synchronization when users are added/removed to WordPress roles', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Supports both primary role changes (set_user_role) and secondary role changes (add_user_role/remove_user_role)', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Maps Cognito groups to WordPress roles', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Syncs user profile information', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Custom field mapping support', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Automatic real-time role synchronization when users are added/removed to WordPress roles', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Supports both primary role changes (set_user_role) and secondary role changes (add_user_role/remove_user_role)', 'wp-cognito-auth' ); ?></li>
 				</ul>
 
-				<h4><?php _e( 'Content Restriction', 'wp-cognito-auth' ); ?></h4>
-				<p><?php _e( 'Restrict content access based on Cognito group membership.', 'wp-cognito-auth' ); ?></p>
+				<h4><?php esc_html_e( 'Content Restriction', 'wp-cognito-auth' ); ?></h4>
+				<p><?php esc_html_e( 'Restrict content access based on Cognito group membership.', 'wp-cognito-auth' ); ?></p>
 				<ul>
-					<li><?php _e( 'Use shortcodes: [cognito_restrict groups="group1,group2"]Content[/cognito_restrict]', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Configure restrictions in post/page editor', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Automatic content filtering', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Use shortcodes: [cognito_restrict groups="group1,group2"]Content[/cognito_restrict]', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Configure restrictions in post/page editor', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Automatic content filtering', 'wp-cognito-auth' ); ?></li>
 				</ul>
 			</div>
 
 			<div class="card">
-				<h3><?php _e( 'Troubleshooting', 'wp-cognito-auth' ); ?></h3>
+				<h3><?php esc_html_e( 'Troubleshooting', 'wp-cognito-auth' ); ?></h3>
 
-				<h4><?php _e( 'Common Issues', 'wp-cognito-auth' ); ?></h4>
+				<h4><?php esc_html_e( 'Common Issues', 'wp-cognito-auth' ); ?></h4>
 
-				<p><strong><?php _e( 'Login redirects to error page', 'wp-cognito-auth' ); ?></strong></p>
+				<p><strong><?php esc_html_e( 'Login redirects to error page', 'wp-cognito-auth' ); ?></strong></p>
 				<ul>
-					<li><?php _e( 'Check that callback URL is correctly configured in Cognito', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Verify client secret is correct', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Enable WP_DEBUG to see detailed error logs', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Check that callback URL is correctly configured in Cognito', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Verify client secret is correct', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Enable WP_DEBUG to see detailed error logs', 'wp-cognito-auth' ); ?></li>
 				</ul>
 
-				<p><strong><?php _e( 'Users not being created', 'wp-cognito-auth' ); ?></strong></p>
+				<p><strong><?php esc_html_e( 'Users not being created', 'wp-cognito-auth' ); ?></strong></p>
 				<ul>
-					<li><?php _e( 'Check if "Auto-create users" is enabled', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Verify default role is set correctly', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Check WordPress error logs for user creation failures', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Check if "Auto-create users" is enabled', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Verify default role is set correctly', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Check WordPress error logs for user creation failures', 'wp-cognito-auth' ); ?></li>
 				</ul>
 
-				<p><strong><?php _e( 'First/Last names not being set', 'wp-cognito-auth' ); ?></strong></p>
+				<p><strong><?php esc_html_e( 'First/Last names not being set', 'wp-cognito-auth' ); ?></strong></p>
 				<ul>
-					<li><?php _e( 'Check error logs to see what name fields Cognito is providing', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Ensure given_name and family_name attributes are enabled in Cognito', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Plugin will split the "name" field if given_name/family_name are not available', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Check error logs to see what name fields Cognito is providing', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Ensure given_name and family_name attributes are enabled in Cognito', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Plugin will split the "name" field if given_name/family_name are not available', 'wp-cognito-auth' ); ?></li>
 				</ul>
 
-				<p><strong><?php _e( 'Login with Cognito button not showing', 'wp-cognito-auth' ); ?></strong></p>
+				<p><strong><?php esc_html_e( 'Login with Cognito button not showing', 'wp-cognito-auth' ); ?></strong></p>
 				<ul>
-					<li><?php _e( 'Check that Authentication feature is enabled', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Ensure "Force Cognito authentication" is disabled if you want to show the button', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Check for theme/plugin conflicts that might interfere with login form hooks', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'The plugin includes a JavaScript fallback that should add the button automatically', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Check that Authentication feature is enabled', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Ensure "Force Cognito authentication" is disabled if you want to show the button', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Check for theme/plugin conflicts that might interfere with login form hooks', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'The plugin includes a JavaScript fallback that should add the button automatically', 'wp-cognito-auth' ); ?></li>
 				</ul>
 
-				<p><strong><?php _e( 'Logout not working properly', 'wp-cognito-auth' ); ?></strong></p>
+				<p><strong><?php esc_html_e( 'Logout not working properly', 'wp-cognito-auth' ); ?></strong></p>
 				<ul>
-					<li><?php _e( 'Ensure logout URLs are configured in Cognito', 'wp-cognito-auth' ); ?></li>
-					<li><?php _e( 'Check that Hosted UI domain is set correctly', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Ensure logout URLs are configured in Cognito', 'wp-cognito-auth' ); ?></li>
+					<li><?php esc_html_e( 'Check that Hosted UI domain is set correctly', 'wp-cognito-auth' ); ?></li>
 				</ul>
 
-				<h4><?php _e( 'Debug Information', 'wp-cognito-auth' ); ?></h4>
-				<p><?php _e( 'Enable WordPress debug mode to see detailed logs:', 'wp-cognito-auth' ); ?></p>
+				<h4><?php esc_html_e( 'Debug Information', 'wp-cognito-auth' ); ?></h4>
+				<p><?php esc_html_e( 'Enable WordPress debug mode to see detailed logs:', 'wp-cognito-auth' ); ?></p>
 				<pre><code>define('WP_DEBUG', true);
 define('WP_DEBUG_LOG', true);</code></pre>
-				<p><?php _e( 'Check logs in:', 'wp-cognito-auth' ); ?> <code>/wp-content/debug.log</code></p>
+				<p><?php esc_html_e( 'Check logs in:', 'wp-cognito-auth' ); ?> <code>/wp-content/debug.log</code></p>
 			</div>
 
 			<div class="card">
-				<h3><?php _e( 'Support', 'wp-cognito-auth' ); ?></h3>
-				<p><?php _e( 'For additional support and documentation:', 'wp-cognito-auth' ); ?></p>
+				<h3><?php esc_html_e( 'Support', 'wp-cognito-auth' ); ?></h3>
+				<p><?php esc_html_e( 'For additional support and documentation:', 'wp-cognito-auth' ); ?></p>
 				<ul>
-					<li><a href="https://docs.aws.amazon.com/cognito/" target="_blank"><?php _e( 'AWS Cognito Documentation', 'wp-cognito-auth' ); ?></a></li>
-					<li><?php _e( 'Plugin version:', 'wp-cognito-auth' ); ?> <strong>2.3.1</strong></li>
+					<li><a href="https://docs.aws.amazon.com/cognito/" target="_blank"><?php esc_html_e( 'AWS Cognito Documentation', 'wp-cognito-auth' ); ?></a></li>
+					<li><?php esc_html_e( 'Plugin version:', 'wp-cognito-auth' ); ?> <strong>2.3.1</strong></li>
 				</ul>
 			</div>
 		</div>
@@ -1286,24 +1286,24 @@ define('WP_DEBUG_LOG', true);</code></pre>
 		?>
 		<div class="cognito-bulk-sync-container">
 			<div class="cognito-card">
-				<h2><?php _e( 'User Sync Management', 'wp-cognito-auth' ); ?></h2>
+				<h2><?php esc_html_e( 'User Sync Management', 'wp-cognito-auth' ); ?></h2>
 
 				<div class="sync-actions">
 					<div class="sync-action-box">
-						<h3><?php _e( 'Test User Sync', 'wp-cognito-auth' ); ?></h3>
-						<p><?php _e( 'Preview which users would be created or updated in Cognito without making any changes.', 'wp-cognito-auth' ); ?></p>
+						<h3><?php esc_html_e( 'Test User Sync', 'wp-cognito-auth' ); ?></h3>
+						<p><?php esc_html_e( 'Preview which users would be created or updated in Cognito without making any changes.', 'wp-cognito-auth' ); ?></p>
 						<form method="post" action="<?php echo admin_url( 'admin-post.php' ); ?>">
 							<?php wp_nonce_field( 'cognito_test_sync' ); ?>
 							<input type="hidden" name="action" value="cognito_test_sync">
 							<button type="submit" class="button button-secondary">
-								<?php _e( 'Run Test Sync', 'wp-cognito-auth' ); ?>
+								<?php esc_html_e( 'Run Test Sync', 'wp-cognito-auth' ); ?>
 							</button>
 						</form>
 					</div>
 
 					<div class="sync-action-box">
-						<h3><?php _e( 'Full User Sync', 'wp-cognito-auth' ); ?></h3>
-						<p><?php _e( 'Synchronize all WordPress users with Cognito. Creates new users in Cognito and updates existing ones. This operation cannot be undone.', 'wp-cognito-auth' ); ?></p>
+						<h3><?php esc_html_e( 'Full User Sync', 'wp-cognito-auth' ); ?></h3>
+						<p><?php esc_html_e( 'Synchronize all WordPress users with Cognito. Creates new users in Cognito and updates existing ones. This operation cannot be undone.', 'wp-cognito-auth' ); ?></p>
 
 						<form method="post" action="<?php echo admin_url( 'admin-post.php' ); ?>">
 							<?php wp_nonce_field( 'cognito_bulk_sync' ); ?>
@@ -1311,26 +1311,26 @@ define('WP_DEBUG_LOG', true);</code></pre>
 							<input type="hidden" name="sync_direction" value="wp_to_cognito">
 
 							<div class="sync-options">
-								<h4><?php _e( 'User Selection:', 'wp-cognito-auth' ); ?></h4>
+								<h4><?php esc_html_e( 'User Selection:', 'wp-cognito-auth' ); ?></h4>
 								<label style="display: block; margin-bottom: 8px;">
 									<input type="radio" name="user_selection" value="all" checked>
-									<?php _e( 'All Users', 'wp-cognito-auth' ); ?>
+									<?php esc_html_e( 'All Users', 'wp-cognito-auth' ); ?>
 									<span class="description" style="display: block; margin-left: 20px; font-style: italic; color: #666;">
-										<?php _e( 'Sync all WordPress users to Cognito', 'wp-cognito-auth' ); ?>
+										<?php esc_html_e( 'Sync all WordPress users to Cognito', 'wp-cognito-auth' ); ?>
 									</span>
 								</label>
 
 								<label style="display: block; margin-bottom: 8px;">
 									<input type="radio" name="user_selection" value="role">
-									<?php _e( 'Users by Role', 'wp-cognito-auth' ); ?>
+									<?php esc_html_e( 'Users by Role', 'wp-cognito-auth' ); ?>
 									<span class="description" style="display: block; margin-left: 20px; font-style: italic; color: #666;">
-										<?php _e( 'Sync users with a specific WordPress role', 'wp-cognito-auth' ); ?>
+										<?php esc_html_e( 'Sync users with a specific WordPress role', 'wp-cognito-auth' ); ?>
 									</span>
 								</label>
 
 								<div id="role-selection" style="margin-left: 20px; margin-top: 10px; display: none;">
 									<select name="selected_role">
-										<option value=""><?php _e( 'Select a role...', 'wp-cognito-auth' ); ?></option>
+										<option value=""><?php esc_html_e( 'Select a role...', 'wp-cognito-auth' ); ?></option>
 										<?php
 										$roles = get_editable_roles();
 										foreach ( $roles as $role_name => $role_info ) {
@@ -1343,7 +1343,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 
 							<p style="margin-top: 15px;">
 								<button type="submit" class="button button-primary">
-									<?php _e( 'Start Full Sync', 'wp-cognito-auth' ); ?>
+									<?php esc_html_e( 'Start Full Sync', 'wp-cognito-auth' ); ?>
 								</button>
 							</p>
 						</form>
@@ -1353,29 +1353,29 @@ define('WP_DEBUG_LOG', true);</code></pre>
 
 			<?php if ( ! empty( $features['group_sync'] ) ) : ?>
 			<div class="cognito-card">
-				<h2><?php _e( 'Wordpress -> Cognito Group Sync Management', 'wp-cognito-auth' ); ?></h2>
+				<h2><?php esc_html_e( 'Wordpress -> Cognito Group Sync Management', 'wp-cognito-auth' ); ?></h2>
 
 				<div class="sync-actions">
 					<div class="sync-action-box">
-						<h3><?php _e( 'Test Group Sync', 'wp-cognito-auth' ); ?></h3>
-						<p><?php _e( 'Preview which groups would be created and which memberships would be updated.', 'wp-cognito-auth' ); ?></p>
+						<h3><?php esc_html_e( 'Test Group Sync', 'wp-cognito-auth' ); ?></h3>
+						<p><?php esc_html_e( 'Preview which groups would be created and which memberships would be updated.', 'wp-cognito-auth' ); ?></p>
 						<form method="post" action="<?php echo admin_url( 'admin-post.php' ); ?>">
 							<?php wp_nonce_field( 'cognito_test_group_sync' ); ?>
 							<input type="hidden" name="action" value="cognito_test_group_sync">
 							<button type="submit" class="button button-secondary">
-								<?php _e( 'Run Group Test Sync', 'wp-cognito-auth' ); ?>
+								<?php esc_html_e( 'Run Group Test Sync', 'wp-cognito-auth' ); ?>
 							</button>
 						</form>
 					</div>
 
 					<div class="sync-action-box">
-						<h3><?php _e( 'Full Group Sync', 'wp-cognito-auth' ); ?></h3>
-						<p><?php _e( 'Create missing groups in Cognito and synchronize all group memberships.', 'wp-cognito-auth' ); ?></p>
+						<h3><?php esc_html_e( 'Full Group Sync', 'wp-cognito-auth' ); ?></h3>
+						<p><?php esc_html_e( 'Create missing groups in Cognito and synchronize all group memberships.', 'wp-cognito-auth' ); ?></p>
 						<form method="post" action="<?php echo admin_url( 'admin-post.php' ); ?>">
 							<?php wp_nonce_field( 'cognito_full_group_sync' ); ?>
 							<input type="hidden" name="action" value="cognito_full_group_sync">
 							<button type="submit" class="button button-primary">
-								<?php _e( 'Start Full Group Sync', 'wp-cognito-auth' ); ?>
+								<?php esc_html_e( 'Start Full Group Sync', 'wp-cognito-auth' ); ?>
 							</button>
 						</form>
 					</div>
@@ -1384,7 +1384,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 			<?php endif; ?>
 
 			<div class="cognito-card">
-				<h2><?php _e( 'Sync Statistics', 'wp-cognito-auth' ); ?></h2>
+				<h2><?php esc_html_e( 'Sync Statistics', 'wp-cognito-auth' ); ?></h2>
 				<?php $this->render_sync_stats(); ?>
 			</div>
 		</div>
@@ -1430,7 +1430,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 					var selectedRole = $('select[name="selected_role"]').val();
 					if (!selectedRole) {
 						e.preventDefault();
-						alert('<?php esc_js( _e( 'Please select a role to sync.', 'wp-cognito-auth' ) ); ?>');
+						alert('<?php esc_js( __( 'Please select a role to sync.', 'wp-cognito-auth' ) ); ?>');
 						return false;
 					}
 				}
@@ -1459,19 +1459,19 @@ define('WP_DEBUG_LOG', true);</code></pre>
 		?>
 		<div class="group-management-container">
 			<div class="cognito-card">
-				<h2><?php _e( 'Group Synchronization Management', 'wp-cognito-auth' ); ?></h2>
+				<h2><?php esc_html_e( 'Group Synchronization Management', 'wp-cognito-auth' ); ?></h2>
 				<p class="description">
-					<?php _e( 'Select which WordPress roles should be synchronized with Cognito groups. When you enable sync for a role, the corresponding Cognito group will be created automatically. Role changes are synchronized immediately when users are added to or removed from WordPress roles.', 'wp-cognito-auth' ); ?>
+					<?php esc_html_e( 'Select which WordPress roles should be synchronized with Cognito groups. When you enable sync for a role, the corresponding Cognito group will be created automatically. Role changes are synchronized immediately when users are added to or removed from WordPress roles.', 'wp-cognito-auth' ); ?>
 				</p>
 
 				<table class="widefat">
 					<thead>
 						<tr>
-							<th><?php _e( 'WordPress Role', 'wp-cognito-auth' ); ?></th>
-							<th><?php _e( 'Cognito Group Name', 'wp-cognito-auth' ); ?></th>
-							<th><?php _e( 'User Count', 'wp-cognito-auth' ); ?></th>
-							<th><?php _e( 'Sync Status', 'wp-cognito-auth' ); ?></th>
-							<th><?php _e( 'Actions', 'wp-cognito-auth' ); ?></th>
+							<th><?php esc_html_e( 'WordPress Role', 'wp-cognito-auth' ); ?></th>
+							<th><?php esc_html_e( 'Cognito Group Name', 'wp-cognito-auth' ); ?></th>
+							<th><?php esc_html_e( 'User Count', 'wp-cognito-auth' ); ?></th>
+							<th><?php esc_html_e( 'Sync Status', 'wp-cognito-auth' ); ?></th>
+							<th><?php esc_html_e( 'Actions', 'wp-cognito-auth' ); ?></th>
 						</tr>
 					</thead>
 					<tbody>
@@ -1490,9 +1490,9 @@ define('WP_DEBUG_LOG', true);</code></pre>
 								<td><?php echo $user_count; ?></td>
 								<td>
 									<?php if ( $is_synced ) : ?>
-										<span class="sync-status enabled"><?php _e( 'Enabled', 'wp-cognito-auth' ); ?></span>
+										<span class="sync-status enabled"><?php esc_html_e( 'Enabled', 'wp-cognito-auth' ); ?></span>
 									<?php else : ?>
-										<span class="sync-status disabled"><?php _e( 'Disabled', 'wp-cognito-auth' ); ?></span>
+										<span class="sync-status disabled"><?php esc_html_e( 'Disabled', 'wp-cognito-auth' ); ?></span>
 									<?php endif; ?>
 								</td>
 								<td>
@@ -1517,7 +1517,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 
 				<?php if ( ! empty( $synced_groups ) ) : ?>
 					<div class="group-sync-info">
-						<h3><?php _e( 'Currently Synced Groups', 'wp-cognito-auth' ); ?></h3>
+						<h3><?php esc_html_e( 'Currently Synced Groups', 'wp-cognito-auth' ); ?></h3>
 						<p><?php printf( __( 'You have %d WordPress roles configured for sync with Cognito groups:', 'wp-cognito-auth' ), count( $synced_groups ) ); ?></p>
 						<ul>
 							<?php foreach ( $synced_groups as $group_name ) : ?>
@@ -1525,7 +1525,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 							<?php endforeach; ?>
 						</ul>
 						<p class="description">
-							<?php _e( 'Users are automatically added to/removed from these Cognito groups based on their WordPress role when sync occurs.', 'wp-cognito-auth' ); ?>
+							<?php esc_html_e( 'Users are automatically added to/removed from these Cognito groups based on their WordPress role when sync occurs.', 'wp-cognito-auth' ); ?>
 						</p>
 					</div>
 				<?php endif; ?>
