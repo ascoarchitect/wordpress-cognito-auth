@@ -70,6 +70,20 @@ class Auth {
 		add_filter( 'authenticate', array( $this, 'authenticate_cognito_user' ), 30, 3 );
 		add_filter( 'logout_url', array( $this, 'modify_logout_url' ), 10, 2 );
 		add_action( 'wp_logout', array( $this, 'handle_wp_logout' ) );
+		add_filter( 'allowed_redirect_hosts', array( $this, 'add_cognito_allowed_redirect_host' ) );
+	}
+
+	/**
+	 * Add Cognito domain to allowed redirect hosts
+	 *
+	 * @param array $hosts Array of allowed redirect hosts.
+	 * @return array Modified array of allowed hosts.
+	 */
+	public function add_cognito_allowed_redirect_host( $hosts ) {
+		if ( ! empty( $this->hosted_ui_domain ) ) {
+			$hosts[] = $this->hosted_ui_domain;
+		}
+		return $hosts;
 	}
 
 	/**
@@ -87,7 +101,7 @@ class Auth {
 		);
 
 		$auth_url = "https://{$this->hosted_ui_domain}/oauth2/authorize?" . http_build_query( $params );
-		wp_redirect( $auth_url );
+		wp_safe_redirect( $auth_url );
 		exit;
 	}
 
@@ -273,7 +287,7 @@ class Auth {
 		// Check if we have the required Cognito configuration for logout.
 		if ( empty( $this->hosted_ui_domain ) || empty( $this->client_id ) ) {
 			// Fallback to WordPress logout only if Cognito config is missing.
-			wp_redirect( $redirect_to );
+			wp_safe_redirect( $redirect_to );
 			exit;
 		}
 
@@ -286,8 +300,7 @@ class Auth {
 
 		$logout_url = "https://{$this->hosted_ui_domain}/logout?" . http_build_query( $logout_params );
 
-		// Use wp_redirect instead of wp_safe_redirect for external Cognito URLs.
-		wp_redirect( $logout_url );
+		wp_safe_redirect( $logout_url );
 		exit;
 	}
 
@@ -336,8 +349,7 @@ class Auth {
 
 		$logout_url = "https://{$this->hosted_ui_domain}/logout?" . http_build_query( $logout_params );
 
-		// Use wp_redirect instead of wp_safe_redirect for external Cognito URLs.
-		wp_redirect( $logout_url );
+		wp_safe_redirect( $logout_url );
 		exit;
 	}
 
