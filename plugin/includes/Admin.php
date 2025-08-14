@@ -17,7 +17,7 @@ class Admin {
 		add_action( 'admin_notices', array( $this, 'show_admin_notices' ) );
 		add_action( 'admin_notices', array( $this, 'show_cognito_setup_notices' ) );
 
-		// AJAX handlers
+		// AJAX handlers.
 		add_action( 'wp_ajax_cognito_test_connection', array( $this, 'ajax_test_connection' ) );
 		add_action( 'wp_ajax_cognito_test_sync_connection', array( $this, 'ajax_test_sync_connection' ) );
 		add_action( 'wp_ajax_cognito_test_wp_http', array( $this, 'ajax_test_wp_http' ) );
@@ -44,7 +44,7 @@ class Admin {
 			array( $this, 'render_main_page' )
 		);
 
-		// Authentication Settings
+		// Authentication Settings.
 		add_submenu_page(
 			'wp-cognito-auth',
 			__( 'Authentication', 'wp-cognito-auth' ),
@@ -54,7 +54,7 @@ class Admin {
 			array( $this, 'render_main_page' )
 		);
 
-		// Sync Settings
+		// Sync Settings.
 		add_submenu_page(
 			'wp-cognito-auth',
 			__( 'Sync Settings', 'wp-cognito-auth' ),
@@ -64,7 +64,7 @@ class Admin {
 			array( $this, 'render_main_page' )
 		);
 
-		// Bulk Sync
+		// Bulk Sync.
 		add_submenu_page(
 			'wp-cognito-auth',
 			__( 'Bulk Sync', 'wp-cognito-auth' ),
@@ -74,7 +74,7 @@ class Admin {
 			array( $this, 'render_main_page' )
 		);
 
-		// Group Management
+		// Group Management.
 		add_submenu_page(
 			'wp-cognito-auth',
 			__( 'Group Management', 'wp-cognito-auth' ),
@@ -84,7 +84,7 @@ class Admin {
 			array( $this, 'render_main_page' )
 		);
 
-		// Logs
+		// Logs.
 		add_submenu_page(
 			'wp-cognito-auth',
 			__( 'Logs', 'wp-cognito-auth' ),
@@ -94,7 +94,7 @@ class Admin {
 			array( $this, 'render_main_page' )
 		);
 
-		// Setup Guide
+		// Setup Guide.
 		add_submenu_page(
 			'wp-cognito-auth',
 			__( 'Setup Guide', 'wp-cognito-auth' ),
@@ -106,7 +106,7 @@ class Admin {
 	}
 
 	public function register_settings() {
-		// Feature toggles
+		// Feature toggles.
 		register_setting(
 			'wp_cognito_auth_features',
 			'wp_cognito_features',
@@ -117,7 +117,7 @@ class Admin {
 			)
 		);
 
-		// Authentication settings
+		// Authentication settings.
 		register_setting( 'wp_cognito_auth_settings', 'wp_cognito_auth_user_pool_id' );
 		register_setting( 'wp_cognito_auth_settings', 'wp_cognito_auth_client_id' );
 		register_setting( 'wp_cognito_auth_settings', 'wp_cognito_auth_client_secret' );
@@ -130,7 +130,7 @@ class Admin {
 		register_setting( 'wp_cognito_auth_settings', 'wp_cognito_auth_login_button_color' );
 		register_setting( 'wp_cognito_auth_settings', 'wp_cognito_auth_login_button_text_color' );
 
-		// Sync settings
+		// Sync settings.
 		register_setting( 'wp_cognito_sync_settings', 'wp_cognito_sync_api_url' );
 		register_setting( 'wp_cognito_sync_settings', 'wp_cognito_sync_api_key' );
 		register_setting( 'wp_cognito_sync_settings', 'wp_cognito_sync_on_login' );
@@ -667,7 +667,7 @@ class Admin {
 			</form>
 
 			<?php
-			// Show form test results inline if we have them
+			// Show form test results inline if we have them.
 			if ( isset( $_GET['message'] ) && in_array( $_GET['message'], array( 'sync_test_success_form', 'sync_test_failed_form' ) ) ) {
 				$result = get_transient( 'cognito_sync_test_result' );
 				if ( $result ) {
@@ -682,11 +682,11 @@ class Admin {
 						</p>
 					</div>
 					<?php
-					// Clean up the transient and URL
+					// Clean up the transient and URL.
 					delete_transient( 'cognito_sync_test_result' );
 					?>
 					<script>
-					// Clean up the URL to remove the message parameter
+					// Clean up the URL to remove the message parameter.
 					if (window.history && window.history.replaceState) {
 						const url = new URL(window.location);
 						url.searchParams.delete('message');
@@ -763,7 +763,7 @@ class Admin {
 		$user_selection = sanitize_text_field( $_POST['user_selection'] ?? 'all' );
 		$selected_role  = sanitize_text_field( $_POST['selected_role'] ?? '' );
 
-		// Validate role selection if specified
+		// Validate role selection if specified.
 		if ( $user_selection === 'role' && empty( $selected_role ) ) {
 			wp_redirect(
 				add_query_arg(
@@ -778,24 +778,24 @@ class Admin {
 			exit;
 		}
 
-		// Initialize API if needed
+		// Initialize API if needed.
 		if ( ! $this->api ) {
 			$this->api = new API();
 		}
 
-		// Perform the bulk sync based on user selection
+		// Perform the bulk sync based on user selection.
 		if ( $user_selection === 'role' ) {
 			$result = $this->api->bulk_sync_users_by_role( $selected_role );
 		} else {
 			$result = $this->api->bulk_sync_users();
 		}
 
-		// Set results in transient for display
+		// Set results in transient for display.
 		set_transient( 'cognito_bulk_sync_results', $result, HOUR_IN_SECONDS );
 
 		$message = $result && ! empty( $result['processed'] ) ? 'sync_completed' : 'sync_failed';
 
-		// Redirect with success message
+		// Redirect with success message.
 		wp_redirect(
 			add_query_arg(
 				array(
@@ -816,10 +816,10 @@ class Admin {
 
 		check_admin_referer( 'cognito_test_sync' );
 
-		// Test sync with current user
+		// Test sync with current user.
 		$current_user = wp_get_current_user();
 
-		// Initialize API if needed
+		// Initialize API if needed.
 		if ( ! $this->api ) {
 			$features = get_option( 'wp_cognito_features', array() );
 			if ( ! empty( $features['sync'] ) ) {
@@ -863,7 +863,7 @@ class Admin {
 	private function render_sync_stats() {
 		global $wpdb;
 
-		// Get user statistics
+		// Get user statistics.
 		$total_users    = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->users}" );
 		$linked_users   = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->usermeta} WHERE meta_key = 'cognito_user_id' AND meta_value != ''" );
 		$unlinked_users = $total_users - $linked_users;
@@ -906,7 +906,7 @@ class Admin {
 			wp_send_json_error( __( 'Please configure User Pool ID and Region first', 'wp-cognito-auth' ) );
 		}
 
-		// Test JWKS endpoint
+		// Test JWKS endpoint.
 		$jwks_url = "https://cognito-idp.{$region}.amazonaws.com/{$user_pool_id}/.well-known/jwks.json";
 		$response = wp_remote_get( $jwks_url, array( 'timeout' => 10 ) );
 
@@ -923,7 +923,7 @@ class Admin {
 	}
 
 	public function ajax_test_sync_connection() {
-		// Check nonce - but provide specific error message if it fails
+		// Check nonce - but provide specific error message if it fails.
 		if ( ! wp_verify_nonce( $_POST['nonce'] ?? '', 'wp_cognito_auth_nonce' ) ) {
 			wp_send_json_error( 'Security check failed. Please refresh the page and try again.' );
 			return;
@@ -934,12 +934,12 @@ class Admin {
 			return;
 		}
 
-		// Initialize API if not already done
+		// Initialize API if not already done.
 		if ( ! $this->api ) {
 			$this->api = new API();
 		}
 
-		// Use the API's test_connection method
+		// Use the API's test_connection method.
 		$result = $this->api->test_connection();
 
 		if ( $result['success'] ) {
@@ -955,17 +955,17 @@ class Admin {
 	public function show_cognito_setup_notices() {
 		$features = get_option( 'wp_cognito_features', array() );
 
-		// Only show on admin pages
+		// Only show on admin pages.
 		if ( ! is_admin() ) {
 			return;
 		}
 
-		// Only show to users who can manage options
+		// Only show to users who can manage options.
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
 
-		// Check if authentication is enabled but not configured
+		// Check if authentication is enabled but not configured.
 		if ( ! empty( $features['authentication'] ) ) {
 			$user_pool_id     = get_option( 'wp_cognito_auth_user_pool_id' );
 			$client_id        = get_option( 'wp_cognito_auth_client_id' );
@@ -984,7 +984,7 @@ class Admin {
 				</div>
 				<?php
 			} else {
-				// Show information about login behavior
+				// Show information about login behavior.
 				$force_cognito = get_option( 'wp_cognito_auth_force_cognito', false );
 				if ( $force_cognito ) {
 					$emergency_param = get_option( 'wp_cognito_emergency_access_param' );
@@ -1005,7 +1005,7 @@ class Admin {
 	}
 
 	public function show_admin_notices() {
-		// Show configuration warnings
+		// Show configuration warnings.
 		$features = get_option( 'wp_cognito_features', array() );
 
 		if ( ! empty( $features['authentication'] ) ) {
@@ -1031,7 +1031,7 @@ class Admin {
 			}
 		}
 
-		// Show group sync messages
+		// Show group sync messages.
 		if ( isset( $_GET['message'] ) ) {
 			switch ( $_GET['message'] ) {
 				case 'group_sync_enabled':
@@ -1106,7 +1106,7 @@ class Admin {
 	 * Enqueue admin assets
 	 */
 	public function enqueue_admin_assets( $hook ) {
-		// Only load on our plugin pages
+		// Only load on our plugin pages.
 		if ( strpos( $hook, 'wp-cognito-auth' ) === false ) {
 			return;
 		}
@@ -1126,7 +1126,7 @@ class Admin {
 			WP_COGNITO_AUTH_VERSION
 		);
 
-		// Localize script for AJAX
+		// Localize script for AJAX.
 		wp_localize_script(
 			'wp-cognito-auth-admin',
 			'wpCognitoAuth',
@@ -1414,7 +1414,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 
 		<script>
 		jQuery(document).ready(function($) {
-			// Handle role selection toggle
+			// Handle role selection toggle.
 			$('input[name="user_selection"]').on('change', function() {
 				if ($(this).val() === 'role') {
 					$('#role-selection').show();
@@ -1423,7 +1423,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 				}
 			});
 
-			// Validate form submission
+			// Validate form submission.
 			$('form[action*="cognito_bulk_sync"]').on('submit', function(e) {
 				var userSelection = $('input[name="user_selection"]:checked').val();
 				if (userSelection === 'role') {
@@ -1569,7 +1569,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 		$group_name = sanitize_key( $_POST['group_id'] );
 		$enabled    = isset( $_POST['enabled'] ) && $_POST['enabled'] === '1';
 
-		// Validate against actual WordPress roles
+		// Validate against actual WordPress roles.
 		$roles = get_editable_roles();
 		if ( ! array_key_exists( $group_name, $roles ) ) {
 			wp_die( __( 'Invalid role specified', 'wp-cognito-auth' ) );
@@ -1584,17 +1584,17 @@ define('WP_DEBUG_LOG', true);</code></pre>
 			if ( ! in_array( $group_name, $synced_groups ) ) {
 				$synced_groups[] = $group_name;
 
-				// Initialize API and Sync
+				// Initialize API and Sync.
 				if ( ! $this->api ) {
 					$this->api = new API();
 				}
 
 				try {
-					// Create the group in Cognito
+					// Create the group in Cognito.
 					$this->api->create_group( $group_name );
 					$message = 'group_sync_enabled';
 				} catch ( \Exception $e ) {
-					// Log the error but still enable sync locally
+					// Log the error but still enable sync locally.
 					if ( $this->api ) {
 						$this->api->log_message( "Failed to create group {$group_name}: " . $e->getMessage(), 'error' );
 					}
@@ -1676,16 +1676,16 @@ define('WP_DEBUG_LOG', true);</code></pre>
 
 		check_admin_referer( 'cognito_full_group_sync' );
 
-		// Initialize API and Sync if not already done
+		// Initialize API and Sync if not already done.
 		if ( ! $this->api ) {
 			$this->api = new API();
 		}
 
-		// Use Sync class for proper group synchronization
+		// Use Sync class for proper group synchronization.
 		$sync  = new \WP_Cognito_Auth\Sync( $this->api );
 		$stats = $sync->sync_groups();
 
-		// Also sync user group memberships
+		// Also sync user group memberships.
 		$synced_groups    = get_option( 'wp_cognito_sync_groups', array() );
 		$membership_stats = array(
 			'memberships_updated' => 0,
@@ -1706,7 +1706,7 @@ define('WP_DEBUG_LOG', true);</code></pre>
 			}
 		}
 
-		// Merge stats
+		// Merge stats.
 		$final_stats              = array_merge( $stats, $membership_stats );
 		$final_stats['timestamp'] = current_time( 'mysql' );
 
@@ -1732,20 +1732,20 @@ define('WP_DEBUG_LOG', true);</code></pre>
 
 		check_admin_referer( 'cognito_sync_test_form' );
 
-		// Initialize API if needed
+		// Initialize API if needed.
 		if ( ! $this->api ) {
 			$this->api = new API();
 		}
 
-		// Run the test
+		// Run the test.
 		$result = $this->api->test_connection();
 
-		// Set result in transient for display
+		// Set result in transient for display.
 		set_transient( 'cognito_sync_test_result', $result, MINUTE_IN_SECONDS * 5 );
 
 		$message = $result['success'] ? 'sync_test_success_form' : 'sync_test_failed_form';
 
-		// Redirect back with result
+		// Redirect back with result.
 		wp_redirect(
 			add_query_arg(
 				array(

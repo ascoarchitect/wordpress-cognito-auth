@@ -12,15 +12,15 @@ class Plugin {
 
 	public function init() {
 		try {
-			// Test if we can create the Admin class
+			// Test if we can create the Admin class.
 			if ( ! class_exists( 'WP_Cognito_Auth\Admin' ) ) {
 				return;
 			}
 
-			// Load text domain
+			// Load text domain.
 			add_action( 'init', array( $this, 'load_textdomain' ) );
 
-			// Initialize core components
+			// Initialize core components.
 			$this->admin = new Admin();
 
 			if ( ! $this->admin ) {
@@ -29,36 +29,36 @@ class Plugin {
 
 			$this->user = new User();
 
-			// Initialize meta box for content restrictions
+			// Initialize meta box for content restrictions.
 			if ( class_exists( 'WP_Cognito_Auth\MetaBox' ) ) {
 				$this->meta_box = new MetaBox();
 			}
 
-			// Get enabled features
+			// Get enabled features.
 			$features = get_option( 'wp_cognito_features', array() );
 
-			// Initialize sync functionality if enabled
+			// Initialize sync functionality if enabled.
 			if ( ! empty( $features['sync'] ) ) {
 				$this->api  = new API();
 				$this->sync = new Sync( $this->api );
 
-				// Set sync reference in user object after both are initialized
+				// Set sync reference in user object after both are initialized.
 				if ( $this->user && method_exists( $this->user, 'set_sync' ) ) {
 					$this->user->set_sync( $this->sync );
 				}
 			}
 
-			// Initialize authentication if enabled
+			// Initialize authentication if enabled.
 			if ( ! empty( $features['authentication'] ) ) {
 				$this->auth = new Auth();
 
-				// Initialize content filter for role-based restrictions
+				// Initialize content filter for role-based restrictions.
 				if ( class_exists( 'WP_Cognito_Auth\ContentFilter' ) ) {
 					$this->content_filter = new ContentFilter();
 				}
 			}
 
-			// Setup hooks
+			// Setup hooks.
 			$this->setup_hooks();
 
 		} catch ( \Exception $e ) {
@@ -99,13 +99,13 @@ class Plugin {
 			add_filter( 'wp_logout_url', array( $this, 'modify_logout_url' ), 10, 2 );
 		}
 
-		// Admin hooks
+		// Admin hooks.
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
 		add_action( 'wp_ajax_cognito_test_connection', array( $this->admin, 'ajax_test_connection' ) );
 	}
 
 	public function handle_cognito_requests() {
-		// Handle Cognito login initiation
+		// Handle Cognito login initiation.
 		if ( isset( $_GET['cognito_login'] ) && $_GET['cognito_login'] === '1' ) {
 			if ( ! $this->auth ) {
 				wp_die( __( 'Cognito authentication is not enabled', 'wp-cognito-auth' ) );
@@ -115,7 +115,7 @@ class Plugin {
 			$this->auth->initiate_login( $redirect_to );
 		}
 
-		// Handle logout requests
+		// Handle logout requests.
 		if ( isset( $_GET['cognito_logout'] ) && $_GET['cognito_logout'] === '1' ) {
 			if ( $this->auth ) {
 				$this->auth->handle_logout();

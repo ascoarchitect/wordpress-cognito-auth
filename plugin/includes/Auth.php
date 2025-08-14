@@ -63,10 +63,10 @@ class Auth {
 		add_action( 'init', array( $this, 'handle_logout' ) );
 		add_action( 'init', array( $this, 'handle_reauth_logout' ) );
 		add_action( 'wp_login_form', array( $this, 'add_cognito_login_button' ) );
-		add_action( 'login_form', array( $this, 'add_cognito_login_button' ) ); // Alternative hook
+		add_action( 'login_form', array( $this, 'add_cognito_login_button' ) ); // Alternative hook.
 		add_action( 'login_init', array( $this, 'maybe_redirect_to_cognito' ) );
 		add_action( 'login_init', array( $this, 'handle_logged_in_user_on_login_page' ) );
-		add_action( 'login_footer', array( $this, 'add_cognito_login_fallback' ) ); // Fallback method
+		add_action( 'login_footer', array( $this, 'add_cognito_login_fallback' ) ); // Fallback method.
 		add_filter( 'authenticate', array( $this, 'authenticate_cognito_user' ), 30, 3 );
 		add_filter( 'logout_url', array( $this, 'modify_logout_url' ), 10, 2 );
 		add_action( 'wp_logout', array( $this, 'handle_wp_logout' ) );
@@ -176,7 +176,7 @@ class Auth {
 				wp_die( esc_html__( 'Failed to authenticate with Cognito. Please check your configuration and try again.', 'wp-cognito-auth' ) );
 			}
 
-			// Store tokens in session for logout
+			// Store tokens in session for logout.
 			if ( ! session_id() ) {
 				session_start();
 			}
@@ -286,7 +286,7 @@ class Auth {
 
 		$logout_url = "https://{$this->hosted_ui_domain}/logout?" . http_build_query( $logout_params );
 
-		// Use wp_redirect instead of wp_safe_redirect for external Cognito URLs
+		// Use wp_redirect instead of wp_safe_redirect for external Cognito URLs.
 		wp_redirect( $logout_url );
 		exit;
 	}
@@ -300,17 +300,17 @@ class Auth {
 			return;
 		}
 
-		// Only handle if user is logged in and this is on wp-login.php
+		// Only handle if user is logged in and this is on wp-login.php.
 		if ( ! is_user_logged_in() || ! isset( $GLOBALS['pagenow'] ) || 'wp-login.php' !== $GLOBALS['pagenow'] ) {
 			return;
 		}
 
-		// Check if Cognito authentication is configured
+		// Check if Cognito authentication is configured.
 		if ( empty( $this->hosted_ui_domain ) || empty( $this->client_id ) ) {
-			return; // Let WordPress handle normal logout
+			return; // Let WordPress handle normal logout.
 		}
 
-		// Get the redirect URL
+		// Get the redirect URL.
 		$redirect_to = '';
 		if ( isset( $_GET['redirect_to'] ) ) {
 			$redirect_to = urldecode( wp_unslash( sanitize_text_field( $_GET['redirect_to'] ) ) );
@@ -336,7 +336,7 @@ class Auth {
 
 		$logout_url = "https://{$this->hosted_ui_domain}/logout?" . http_build_query( $logout_params );
 
-		// Use wp_redirect instead of wp_safe_redirect for external Cognito URLs
+		// Use wp_redirect instead of wp_safe_redirect for external Cognito URLs.
 		wp_redirect( $logout_url );
 		exit;
 	}
@@ -588,7 +588,7 @@ class Auth {
 
 		try {
 			$decoded = JWT::decode( $id_token, $jwks );
-			// Convert object to array if needed
+			// Convert object to array if needed.
 			return is_array( $decoded ) ? $decoded : (array) $decoded;
 		} catch ( \Exception $e ) {
 			return false;
@@ -605,7 +605,7 @@ class Auth {
 		$email       = $cognito_user_data['email'];
 		$cognito_sub = $cognito_user_data['sub'];
 
-		// Check if user exists by Cognito sub
+		// Check if user exists by Cognito sub.
 		$existing_user = get_users(
 			array(
 				'meta_key'   => 'cognito_user_id',
@@ -620,7 +620,7 @@ class Auth {
 			return $user;
 		}
 
-		// Check if user exists by email
+		// Check if user exists by email.
 		$user = get_user_by( 'email', $email );
 		if ( $user ) {
 			update_user_meta( $user->ID, 'cognito_user_id', $cognito_sub );
@@ -628,7 +628,7 @@ class Auth {
 			return $user;
 		}
 
-		// Create new user if auto-creation is enabled
+		// Create new user if auto-creation is enabled.
 		if ( ! get_option( 'wp_cognito_auth_auto_create_users', true ) ) {
 			return false;
 		}
@@ -640,12 +640,12 @@ class Auth {
 			return false;
 		}
 
-		// Set default role
+		// Set default role.
 		$default_role = get_option( 'wp_cognito_auth_default_role', 'subscriber' );
 		$user         = new \WP_User( $user_id );
 		$user->set_role( $default_role );
 
-		// Store Cognito ID and update user data
+		// Store Cognito ID and update user data.
 		update_user_meta( $user_id, 'cognito_user_id', $cognito_sub );
 		$this->update_user_from_cognito( $user_id, $cognito_user_data );
 
@@ -661,11 +661,11 @@ class Auth {
 	private function update_user_from_cognito( $user_id, $cognito_data ) {
 		$updates = array();
 
-		// Handle first name and last name with intelligent fallback
+		// Handle first name and last name with intelligent fallback.
 		$first_name = null;
 		$last_name  = null;
 
-		// Priority 1: Use given_name and family_name if available
+		// Priority 1: Use given_name and family_name if available.
 		if ( isset( $cognito_data['given_name'] ) && ! empty( $cognito_data['given_name'] ) ) {
 			$first_name = $cognito_data['given_name'];
 		}
@@ -673,7 +673,7 @@ class Auth {
 			$last_name = $cognito_data['family_name'];
 		}
 
-		// Priority 2: If given_name/family_name not available, try custom fields
+		// Priority 2: If given_name/family_name not available, try custom fields.
 		if ( ! $first_name && isset( $cognito_data['custom:first_name'] ) ) {
 			$first_name = $cognito_data['custom:first_name'];
 		}
@@ -681,10 +681,10 @@ class Auth {
 			$last_name = $cognito_data['custom:last_name'];
 		}
 
-		// Priority 3: If still no first/last name, intelligently split the 'name' field
+		// Priority 3: If still no first/last name, intelligently split the 'name' field.
 		if ( ( ! $first_name || ! $last_name ) && isset( $cognito_data['name'] ) && ! empty( $cognito_data['name'] ) ) {
 			$full_name  = trim( $cognito_data['name'] );
-			$name_parts = explode( ' ', $full_name, 2 ); // Split into max 2 parts
+			$name_parts = explode( ' ', $full_name, 2 ); // Split into max 2 parts.
 
 			if ( ! $first_name ) {
 				$first_name = $name_parts[0];
@@ -694,7 +694,7 @@ class Auth {
 			}
 		}
 
-		// Update WordPress user meta with names
+		// Update WordPress user meta with names.
 		if ( $first_name ) {
 			update_user_meta( $user_id, 'first_name', $first_name );
 		}
@@ -703,7 +703,7 @@ class Auth {
 			update_user_meta( $user_id, 'last_name', $last_name );
 		}
 
-		// Update display name - priority: existing 'name' field, then constructed from first/last
+		// Update display name - priority: existing 'name' field, then constructed from first/last.
 		if ( isset( $cognito_data['name'] ) && ! empty( $cognito_data['name'] ) ) {
 			$updates['display_name'] = $cognito_data['name'];
 		} elseif ( $first_name && $last_name ) {
@@ -712,12 +712,12 @@ class Auth {
 			$updates['display_name'] = $first_name;
 		}
 
-		// Store Cognito groups for content restriction
+		// Store Cognito groups for content restriction.
 		if ( isset( $cognito_data['cognito:groups'] ) ) {
 			update_user_meta( $user_id, 'cognito_groups', $cognito_data['cognito:groups'] );
 		}
 
-		// Update custom attributes
+		// Update custom attributes.
 		if ( isset( $cognito_data['custom:wp_memberrank'] ) ) {
 			update_user_meta( $user_id, 'wpuef_cid_c6', $cognito_data['custom:wp_memberrank'] );
 		}
@@ -731,7 +731,7 @@ class Auth {
 			wp_update_user( $updates );
 		}
 
-		// Handle group memberships
+		// Handle group memberships.
 		$this->sync_user_groups_from_cognito( $user_id, $cognito_data );
 	}
 
@@ -859,19 +859,19 @@ class Auth {
 		?>
 		<script type="text/javascript">
 		jQuery(document).ready(function($) {
-			// Check if Cognito button already exists
+			// Check if Cognito button already exists.
 			if ($('.wp-cognito-login').length > 0) {
-				return; // Button already added by hook
+				return; // Button already added by hook.
 			}
 			
-			// Find the login form
+			// Find the login form.
 			var $form = $('#loginform');
 			if ($form.length === 0) {
 				$form = $('form[name="loginform"]');
 			}
 			
 			if ($form.length > 0) {
-				// Create the Cognito login button
+				// Create the Cognito login button.
 				var cognitoButton = '<div class="cognito-login-section" style="margin: 20px 0;">' +
 					'<p style="text-align: center; margin: 20px 0;">' +
 					'<a href="<?php echo esc_js( $login_url ); ?>" class="button button-large wp-cognito-login" ' +
@@ -884,10 +884,10 @@ class Auth {
 					'</div>' +
 					'</div>';
 				
-				// Insert before the form
+				// Insert before the form.
 				$form.before(cognitoButton);
 				
-				// Add hover effects
+				// Add hover effects.
 				$('.wp-cognito-login').hover(
 					function() {
 						$(this).css({

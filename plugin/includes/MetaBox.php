@@ -138,7 +138,7 @@ class MetaBox {
 			}
 			
 			$loginOnly.on('change', toggleSections);
-			toggleSections(); // Initial state
+			toggleSections(); // Initial state.
 		});
 		</script>
 		<?php

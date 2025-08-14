@@ -27,7 +27,7 @@ class API {
 	private function is_user_already_exists_error() {
 		$logs = get_option( self::LOG_OPTION, array() );
 
-		// Check the most recent log entry for the specific error
+		// Check the most recent log entry for the specific error.
 		if ( ! empty( $logs ) && isset( $logs[0]['message'] ) ) {
 			$last_message = $logs[0]['message'];
 			return (
@@ -61,7 +61,7 @@ class API {
 			return false;
 		}
 
-		// Construct the sync URL properly
+		// Construct the sync URL properly.
 		$base_url = rtrim( $base_api_url, '/' );
 		if ( substr( $base_url, -5 ) !== '/sync' ) {
 			$sync_url = $base_url . '/sync';
@@ -113,12 +113,12 @@ class API {
 
 		$result = $this->send_to_lambda( 'create', array( 'user' => $user_data ) );
 
-		// Handle the case where user already exists in Cognito
+		// Handle the case where user already exists in Cognito.
 		if ( ! $result && $this->is_user_already_exists_error() ) {
 			$this->log_message( "User already exists in Cognito, attempting update instead: {$user_data['email']}", 'warning' );
 
-			// Try to update the existing user instead
-			// Use email as cognito_user_id for the update since we don't have the actual ID yet
+			// Try to update the existing user instead.
+			// Use email as cognito_user_id for the update since we don't have the actual ID yet.
 			$user_data['cognito_user_id'] = $user_data['email'];
 			$result                       = $this->update_user( $user_data );
 
@@ -131,8 +131,8 @@ class API {
 			}
 		}
 
-		// Store Cognito User ID if present in response - add safety check
-		// Use sub attribute as it's the standard unique identifier, fallback to Username
+		// Store Cognito User ID if present in response - add safety check.
+		// Use sub attribute as it's the standard unique identifier, fallback to Username.
 		if ( isset( $result['result']['User'] ) && isset( $user_data['wp_user_id'] ) ) {
 			$cognito_user_id = null;
 
@@ -146,7 +146,7 @@ class API {
 				}
 			}
 
-			// Fallback to Username if sub not found
+			// Fallback to Username if sub not found.
 			if ( ! $cognito_user_id && isset( $result['result']['User']['Username'] ) ) {
 				$cognito_user_id = $result['result']['User']['Username'];
 			}
@@ -168,7 +168,7 @@ class API {
 		$result = $this->send_to_lambda( 'update', array( 'user' => $user_data ) );
 
 		// Handle case where Lambda falls back to creating a new user (when original Cognito user was deleted)
-		// Extract and store the new Cognito User ID if present in response
+		// Extract and store the new Cognito User ID if present in response.
 		if ( $result && isset( $result['result']['User'] ) && isset( $user_data['wp_user_id'] ) ) {
 			$new_cognito_user_id = null;
 
@@ -182,12 +182,12 @@ class API {
 				}
 			}
 
-			// Fallback to Username if sub not found
+			// Fallback to Username if sub not found.
 			if ( ! $new_cognito_user_id && isset( $result['result']['User']['Username'] ) ) {
 				$new_cognito_user_id = $result['result']['User']['Username'];
 			}
 
-			// Update metadata if we got a new ID and it's different from what we had
+			// Update metadata if we got a new ID and it's different from what we had.
 			if ( $new_cognito_user_id && isset( $user_data['cognito_user_id'] ) && $new_cognito_user_id !== $user_data['cognito_user_id'] ) {
 				update_user_meta( $user_data['wp_user_id'], 'cognito_user_id', $new_cognito_user_id );
 				$this->log_message( "Lambda created new user - Updated cognito_user_id from {$user_data['cognito_user_id']} to {$new_cognito_user_id} for WordPress user: {$user_data['wp_user_id']}" );
@@ -285,18 +285,18 @@ class API {
 			);
 		}
 
-		// Construct the test URL properly
-		// Remove any trailing /sync if present, then add /test
+		// Construct the test URL properly.
+		// Remove any trailing /sync if present, then add /test.
 		$base_url = rtrim( $base_api_url, '/' );
 		if ( substr( $base_url, -5 ) === '/sync' ) {
 			$base_url = substr( $base_url, 0, -5 );
 		}
 		$test_url = $base_url . '/test';
 
-		// Log the essential request details
+		// Log the essential request details.
 		$this->log_message( "Testing connection to: {$test_url}" );
 
-		// Prepare request arguments
+		// Prepare request arguments.
 		$request_args = array(
 			'headers'     => array(
 				'x-api-key'    => $api_key,
@@ -309,7 +309,7 @@ class API {
 			'httpversion' => '1.1',
 		);
 
-		// Use GET request to the /test endpoint which returns a simple 200 response
+		// Use GET request to the /test endpoint which returns a simple 200 response.
 		$response = wp_remote_get( $test_url, $request_args );
 
 		if ( is_wp_error( $response ) ) {
@@ -336,7 +336,7 @@ class API {
 					'message' => $message,
 				);
 			} else {
-				// Even if JSON parsing fails, 200 means success
+				// Even if JSON parsing fails, 200 means success.
 				$this->log_message( 'Connection test successful' );
 				return array(
 					'success' => true,
@@ -344,7 +344,7 @@ class API {
 				);
 			}
 		} else {
-			// Provide specific error messages for common HTTP codes
+			// Provide specific error messages for common HTTP codes.
 			$error_msg = '';
 			switch ( $http_code ) {
 				case 403:
@@ -378,7 +378,7 @@ class API {
 		$base_api_url = get_option( 'wp_cognito_sync_api_url' );
 		$api_key      = get_option( 'wp_cognito_sync_api_key' );
 
-		// Construct URLs properly
+		// Construct URLs properly.
 		$base_url = rtrim( $base_api_url, '/' );
 		if ( substr( $base_url, -5 ) === '/sync' ) {
 			$base_url = substr( $base_url, 0, -5 );
@@ -403,7 +403,7 @@ class API {
 	public function test_wp_http_functionality() {
 		$results = array();
 
-		// Test 1: Basic HTTP GET to a simple endpoint
+		// Test 1: Basic HTTP GET to a simple endpoint.
 		$simple_response = wp_remote_get( 'https://httpbin.org/get', array( 'timeout' => 10 ) );
 
 		if ( is_wp_error( $simple_response ) ) {
@@ -419,7 +419,7 @@ class API {
 			);
 		}
 
-		// Test 2: SSL/TLS test to AWS
+		// Test 2: SSL/TLS test to AWS.
 		$aws_response = wp_remote_get( 'https://aws.amazon.com/', array( 'timeout' => 10 ) );
 
 		if ( is_wp_error( $aws_response ) ) {
@@ -435,7 +435,7 @@ class API {
 			);
 		}
 
-		// Test 3: Check WordPress HTTP transport methods
+		// Test 3: Check WordPress HTTP transport methods.
 		$transports = array();
 		if ( function_exists( 'curl_version' ) ) {
 			$transports[] = 'cURL';
@@ -452,7 +452,7 @@ class API {
 			'message' => 'Available transports: ' . implode( ', ', $transports ),
 		);
 
-		// Test 4: Check for any HTTP filters that might interfere
+		// Test 4: Check for any HTTP filters that might interfere.
 		$http_filters = array();
 		if ( has_filter( 'pre_http_request' ) ) {
 			$http_filters[] = 'pre_http_request';
@@ -469,7 +469,7 @@ class API {
 			'message' => empty( $http_filters ) ? 'No HTTP filters detected' : 'HTTP filters present: ' . implode( ', ', $http_filters ),
 		);
 
-		// Test 5: Direct test to your API Gateway base
+		// Test 5: Direct test to your API Gateway base.
 		$base_api_url = get_option( 'wp_cognito_sync_api_url' );
 		if ( ! empty( $base_api_url ) ) {
 			$base_url = rtrim( $base_api_url, '/' );
@@ -477,7 +477,7 @@ class API {
 				$base_url = substr( $base_url, 0, -5 );
 			}
 
-			// Just test the base API Gateway URL without any API key
+			// Just test the base API Gateway URL without any API key.
 			$api_response = wp_remote_get( $base_url, array( 'timeout' => 10 ) );
 
 			if ( is_wp_error( $api_response ) ) {
@@ -488,7 +488,7 @@ class API {
 			} else {
 				$code                = wp_remote_retrieve_response_code( $api_response );
 				$results['api_base'] = array(
-					'success' => $code === 403, // We expect 403 without API key, which means we reached the gateway
+					'success' => $code === 403, // We expect 403 without API key, which means we reached the gateway.
 					'message' => "API Gateway base returned code: {$code} (403 expected without API key)",
 				);
 			}
@@ -509,7 +509,7 @@ class API {
 			'tests'           => array(),
 		);
 
-		// Test 1: Check if URL and API key are set
+		// Test 1: Check if URL and API key are set.
 		$results['tests']['config_check'] = array(
 			'name'    => 'Configuration Check',
 			'success' => ! empty( $base_api_url ) && ! empty( $api_key ),
@@ -522,7 +522,7 @@ class API {
 			return $results;
 		}
 
-		// Test 2: URL format validation
+		// Test 2: URL format validation.
 		$url_pattern = '/^https:\/\/[a-z0-9]+\.execute-api\.[a-z0-9-]+\.amazonaws\.com\/[a-z0-9]+$/i';
 		$url_valid   = preg_match( $url_pattern, $base_api_url );
 
@@ -534,7 +534,7 @@ class API {
 				: 'API URL format appears invalid. Expected: https://{api-id}.execute-api.{region}.amazonaws.com/{stage}',
 		);
 
-		// Test 3: Test endpoint connectivity
+		// Test 3: Test endpoint connectivity.
 		$test_result                      = $this->test_connection();
 		$results['tests']['connectivity'] = array(
 			'name'    => 'Test Endpoint Connectivity',
@@ -554,7 +554,7 @@ class API {
 				: "API key length ({$key_length} chars) may be invalid. AWS API keys are typically 20-40 characters.",
 		);
 
-		// Overall success if all critical tests pass
+		// Overall success if all critical tests pass.
 		$results['overall_success'] = $results['tests']['config_check']['success'] &&
 									$results['tests']['connectivity']['success'];
 
@@ -610,7 +610,7 @@ class API {
 						++$stats['failed'];
 					}
 				} else {
-					// Normal update operation
+					// Normal update operation.
 					$user_data['cognito_user_id'] = $cognito_id;
 					$result                       = $this->update_user( $user_data );
 					if ( $result ) {

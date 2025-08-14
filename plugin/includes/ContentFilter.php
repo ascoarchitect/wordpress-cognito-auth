@@ -53,12 +53,12 @@ class ContentFilter {
 		$required_roles  = array_map( 'trim', explode( ',', $atts['roles'] ) );
 		$required_groups = array_map( 'trim', explode( ',', $atts['groups'] ) );
 
-		// If login_only is set, allow access to any authenticated user
+		// If login_only is set, allow access to any authenticated user.
 		if ( ! empty( $atts['login_only'] ) && ( $atts['login_only'] === '1' || $atts['login_only'] === 'true' ) ) {
 			return do_shortcode( $content );
 		}
 
-		// Check WordPress roles
+		// Check WordPress roles.
 		if ( ! empty( $atts['roles'] ) ) {
 			$user_has_role = false;
 			foreach ( $required_roles as $role ) {
@@ -68,7 +68,7 @@ class ContentFilter {
 				}
 			}
 			if ( ! $user_has_role ) {
-				// For logged-in users who don't have the right role, offer re-authentication
+				// For logged-in users who don't have the right role, offer re-authentication.
 				$current_url = get_permalink();
 				$reauth_url  = $this->get_login_url( $current_url, true );
 				$button_text = $this->get_login_button_text( true );
@@ -100,7 +100,7 @@ class ContentFilter {
 					}
 				}
 				if ( ! $user_has_group ) {
-					// For logged-in users who don't have the right group, offer re-authentication
+					// For logged-in users who don't have the right group, offer re-authentication.
 					$current_url = get_permalink();
 					$reauth_url  = $this->get_login_url( $current_url, true );
 					$button_text = $this->get_login_button_text( true );
@@ -114,7 +114,7 @@ class ContentFilter {
 					return '<div class="cognito-restricted-content"><p>' . esc_html( $atts['message'] ) . '</p>' . $actions . '</div>';
 				}
 			} else {
-				// User is not a Cognito user but groups are required - offer re-authentication
+				// User is not a Cognito user but groups are required - offer re-authentication.
 				$current_url = get_permalink();
 				$reauth_url  = $this->get_login_url( $current_url, true );
 
@@ -180,7 +180,7 @@ class ContentFilter {
 	 * Filter content for [cognito_restrict] shortcodes
 	 */
 	public function filter_content( $content ) {
-		// Only process if content contains cognito shortcodes
+		// Only process if content contains cognito shortcodes.
 		if ( strpos( $content, '[cognito_' ) === false ) {
 			return $content;
 		}
@@ -210,12 +210,12 @@ class ContentFilter {
 			return;
 		}
 
-		// If login-only is enabled, allow access to any authenticated user
+		// If login-only is enabled, allow access to any authenticated user.
 		if ( $require_login_only ) {
 			return;
 		}
 
-		// If no specific roles or groups are required but login_only is false, no restrictions apply
+		// If no specific roles or groups are required but login_only is false, no restrictions apply.
 		if ( empty( $required_roles ) && empty( $required_groups ) ) {
 			return;
 		}
@@ -223,7 +223,7 @@ class ContentFilter {
 		$current_user   = wp_get_current_user();
 		$access_granted = false;
 
-		// Check WordPress roles
+		// Check WordPress roles.
 		if ( ! empty( $required_roles ) ) {
 			$required_roles = is_array( $required_roles ) ? $required_roles : array( $required_roles );
 			foreach ( $required_roles as $role ) {
@@ -234,7 +234,7 @@ class ContentFilter {
 			}
 		}
 
-		// Check Cognito groups
+		// Check Cognito groups.
 		if ( ! $access_granted && ! empty( $required_groups ) ) {
 			$cognito_id = get_user_meta( $current_user->ID, 'cognito_user_id', true );
 			if ( ! empty( $cognito_id ) ) {
@@ -264,7 +264,7 @@ class ContentFilter {
 		$force_cognito = get_option( 'wp_cognito_auth_force_cognito', false );
 
 		if ( ! empty( $features['authentication'] ) && $force_cognito ) {
-			// Force Cognito - direct to Cognito login
+			// Force Cognito - direct to Cognito login.
 			$params = array(
 				'cognito_login' => '1',
 				'redirect_to'   => urlencode( $redirect_url ),
@@ -274,7 +274,7 @@ class ContentFilter {
 			}
 			return add_query_arg( $params, wp_login_url() );
 		} else {
-			// Don't force - go to WordPress login page
+			// Don't force - go to WordPress login page.
 			return add_query_arg( 'redirect_to', urlencode( $redirect_url ), wp_login_url() );
 		}
 	}
@@ -286,19 +286,19 @@ class ContentFilter {
 		$features      = get_option( 'wp_cognito_features', array() );
 		$force_cognito = get_option( 'wp_cognito_auth_force_cognito', false );
 
-		// Use customizable button text for Cognito authentication
+		// Use customizable button text for Cognito authentication.
 		if ( ! empty( $features['authentication'] ) ) {
 			if ( $include_different ) {
 				if ( $force_cognito ) {
-					// For force mode, offer login with different account
+					// For force mode, offer login with different account.
 					$custom_text = get_option( 'wp_cognito_auth_login_button_text', 'Login with Cognito' );
-					// Replace "Login" with "Login with different" to maintain context
+					// Replace "Login" with "Login with different" to maintain context.
 					return str_replace( 'Login', __( 'Login with different', 'wp-cognito-auth' ), $custom_text );
 				} else {
 					return __( 'Login with different account', 'wp-cognito-auth' );
 				}
 			} elseif ( $force_cognito ) {
-					// Use the customizable text
+					// Use the customizable text.
 					return get_option( 'wp_cognito_auth_login_button_text', 'Login with Cognito' );
 			} else {
 					return __( 'Login', 'wp-cognito-auth' );
@@ -357,7 +357,7 @@ class ContentFilter {
 	 * Add custom styles for Cognito buttons
 	 */
 	public function add_cognito_button_styles() {
-		// Only add styles if authentication feature is enabled
+		// Only add styles if authentication feature is enabled.
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['authentication'] ) ) {
 			return;
@@ -403,26 +403,26 @@ class ContentFilter {
 	 * Helper function to darken a hex color by a percentage
 	 */
 	private function darken_hex_color( $hex, $percent ) {
-		// Remove # if present
+		// Remove # if present.
 		$hex = str_replace( '#', '', $hex );
 
-		// Validate hex color
+		// Validate hex color.
 		if ( strlen( $hex ) !== 6 ) {
-			return '#ff9900'; // Return default if invalid
+			return '#ff9900'; // Return default if invalid.
 		}
 
-		// Parse RGB values
+		// Parse RGB values.
 		$r = hexdec( substr( $hex, 0, 2 ) );
 		$g = hexdec( substr( $hex, 2, 2 ) );
 		$b = hexdec( substr( $hex, 4, 2 ) );
 
-		// Darken by percentage
+		// Darken by percentage.
 		$factor = ( 100 - $percent ) / 100;
 		$r      = max( 0, min( 255, floor( $r * $factor ) ) );
 		$g      = max( 0, min( 255, floor( $g * $factor ) ) );
 		$b      = max( 0, min( 255, floor( $b * $factor ) ) );
 
-		// Convert back to hex
+		// Convert back to hex.
 		return sprintf( '#%02x%02x%02x', $r, $g, $b );
 	}
 }

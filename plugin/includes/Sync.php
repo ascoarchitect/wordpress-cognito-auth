@@ -152,7 +152,7 @@ class Sync {
 
 		foreach ( $synced_groups as $group_name ) {
 			if ( in_array( $group_name, $user->roles ) ) {
-				// User has this role, ensure they're in the Cognito group
+				// User has this role, ensure they're in the Cognito group.
 				if ( $this->api->update_group_membership( $cognito_user_id, $group_name, 'add' ) ) {
 					$actions_taken[] = "Added to WP_{$group_name}";
 				} else {
@@ -160,7 +160,7 @@ class Sync {
 					$actions_taken[] = "Failed to add to WP_{$group_name}";
 				}
 			} else {
-				// User doesn't have this role, ensure they're removed from the Cognito group
+				// User doesn't have this role, ensure they're removed from the Cognito group.
 				if ( $this->api->update_group_membership( $cognito_user_id, $group_name, 'remove' ) ) {
 					$actions_taken[] = "Removed from WP_{$group_name}";
 				} else {

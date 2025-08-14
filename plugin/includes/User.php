@@ -10,7 +10,7 @@ class User {
 		add_action( 'personal_options_update', array( $this, 'save_cognito_fields' ) );
 		add_action( 'edit_user_profile_update', array( $this, 'save_cognito_fields' ) );
 
-		// Add AJAX handlers
+		// Add AJAX handlers.
 		add_action( 'wp_ajax_cognito_sync_user', array( $this, 'ajax_sync_user' ) );
 		add_action( 'wp_ajax_cognito_unlink_user', array( $this, 'ajax_unlink_user' ) );
 	}
@@ -23,7 +23,7 @@ class User {
 		try {
 			$features = get_option( 'wp_cognito_features', array() );
 
-			// Only sync on login if sync feature is enabled and setting is on
+			// Only sync on login if sync feature is enabled and setting is on.
 			if ( empty( $features['sync'] ) || ! get_option( 'wp_cognito_sync_on_login', false ) ) {
 				return;
 			}
@@ -40,7 +40,7 @@ class User {
 				$this->sync->on_user_update( $user->ID );
 			}
 		} catch ( \Exception $e ) {
-			// Silent handling of errors
+			// Silent handling of errors.
 		}
 	}
 
@@ -194,7 +194,7 @@ class User {
 		<?php if ( ! empty( $features['sync'] ) && current_user_can( 'manage_options' ) ) : ?>
 		<script>
 		jQuery(document).ready(function($) {
-			// Handle user sync
+			// Handle user sync.
 			$('.cognito-user-sync').on('click', function() {
 				var $button = $(this);
 				var userId = $button.data('user-id');
@@ -210,7 +210,7 @@ class User {
 				}, function(response) {
 					if (response.success) {
 						$result.html('<span style="color: #46b450;">✓ ' + response.data + '</span>');
-						// Reload page after 2 seconds to show updated info
+						// Reload page after 2 seconds to show updated info.
 						setTimeout(function() {
 							location.reload();
 						}, 2000);
@@ -227,7 +227,7 @@ class User {
 				});
 			});
 
-			// Handle user unlink
+			// Handle user unlink.
 			$('.cognito-user-unlink').on('click', function() {
 				if (!confirm('<?php esc_js( __( 'Are you sure you want to unlink this user from Cognito? This will not delete the Cognito user.', 'wp-cognito-auth' ) ); ?>')) {
 					return;
@@ -247,7 +247,7 @@ class User {
 				}, function(response) {
 					if (response.success) {
 						$result.html('<span style="color: #46b450;">✓ ' + response.data + '</span>');
-						// Reload page after 2 seconds to show updated info
+						// Reload page after 2 seconds to show updated info.
 						setTimeout(function() {
 							location.reload();
 						}, 2000);
@@ -353,7 +353,7 @@ class User {
 
 		$features = get_option( 'wp_cognito_features', array() );
 
-		// Cognito fields are mostly read-only, no save logic needed currently
+		// Cognito fields are mostly read-only, no save logic needed currently.
 	}
 
 	public function ajax_sync_user() {
@@ -375,7 +375,7 @@ class User {
 		$result = $this->sync->force_sync_user( $user_id );
 
 		if ( $result['success'] ) {
-			// Update last sync time
+			// Update last sync time.
 			update_user_meta( $user_id, 'cognito_last_sync', current_time( 'mysql' ) );
 			wp_send_json_success( $result['message'] );
 		} else {
@@ -400,7 +400,7 @@ class User {
 			wp_send_json_error( __( 'User not found', 'wp-cognito-auth' ) );
 		}
 
-		// Remove Cognito user ID and sync settings
+		// Remove Cognito user ID and sync settings.
 		delete_user_meta( $user_id, 'cognito_user_id' );
 		delete_user_meta( $user_id, 'cognito_last_sync' );
 
