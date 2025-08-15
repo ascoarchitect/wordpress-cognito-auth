@@ -295,6 +295,31 @@ class Admin {
 								</p>
 							</td>
 						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e( 'User Data Master', 'wp-cognito-auth' ); ?></th>
+							<td>
+								<fieldset>
+									<legend class="screen-reader-text"><span><?php esc_html_e( 'User Data Master', 'wp-cognito-auth' ); ?></span></legend>
+									<label>
+										<input type="radio"
+											   name="wp_cognito_features[user_data_master]"
+											   value="wordpress"
+											   <?php checked( ! isset( $features['user_data_master'] ) || 'wordpress' === $features['user_data_master'] ); ?>>
+										<?php esc_html_e( 'WordPress masters user data', 'wp-cognito-auth' ); ?>
+									</label><br>
+									<label>
+										<input type="radio"
+											   name="wp_cognito_features[user_data_master]"
+											   value="cognito"
+											   <?php checked( isset( $features['user_data_master'] ) && 'cognito' === $features['user_data_master'] ); ?>>
+										<?php esc_html_e( 'Cognito masters user data', 'wp-cognito-auth' ); ?>
+									</label>
+								</fieldset>
+								<p class="description">
+									<?php esc_html_e( 'Choose which system is the authoritative source for user profile data (names, email, custom fields). If WordPress is master, user data changes are synced TO Cognito. If Cognito is master, user data changes are synced FROM Cognito during login.', 'wp-cognito-auth' ); ?>
+								</p>
+							</td>
+						</tr>
 					</table>
 
 					<?php submit_button(); ?>

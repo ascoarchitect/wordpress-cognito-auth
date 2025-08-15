@@ -11,8 +11,22 @@ namespace WP_Cognito_Auth;
  * Class Sync
  *
  * Handles bidirectional synchronization of users and groups between WordPress and Amazon Cognito.
+ *
+ * Data Mastering Configuration:
+ * - When 'user_data_master' is set to 'wordpress' (default): WordPress user data changes are synced TO Cognito
+ * - When 'user_data_master' is set to 'cognito': Cognito user data changes are synced FROM Cognito during login
+ *
+ * Group/Role synchronization always flows WordPress roles → Cognito groups with WP_ prefix.
+ * Cognito group memberships are stored in 'cognito_groups' metadata for content restriction.
  */
 class Sync {
+	/**
+	 * Array to track users pending group sync to avoid duplicate operations
+	 *
+	 * @var array
+	 */
+	private $pending_group_sync = array();
+
 	/**
 	 * API component instance
 	 *
@@ -27,6 +41,9 @@ class Sync {
 	 */
 	public function __construct( $api ) {
 		$this->api = $api;
+		
+		// Hook into shutdown to process any pending group syncs
+		add_action( 'shutdown', array( $this, 'process_pending_group_syncs' ), 5 );
 	}
 
 	/**
@@ -65,6 +82,14 @@ class Sync {
 			return;
 		}
 
+		// Skip WordPress->Cognito sync if we're in the middle of Cognito authentication
+		// This prevents conflicts where we sync WordPress roles to Cognito while
+		// Cognito is updating WordPress user data (which shouldn't change roles)
+		if ( get_transient( 'cognito_auth_in_progress_' . $user_id ) ) {
+			$this->api->log_message( "Skipping WordPress to Cognito sync for user {$user_id}: Cognito authentication in progress", 'info' );
+			return;
+		}
+
 		$user = get_userdata( $user_id );
 		if ( ! $user ) {
 			return;
@@ -80,8 +105,9 @@ class Sync {
 			$this->api->create_user( $user_data );
 		}
 
+		// Use batched group sync instead of immediate sync to avoid duplicates with role change hooks
 		if ( ! empty( $features['group_sync'] ) ) {
-			$this->sync_user_groups( $user_id );
+			$this->schedule_group_sync( $user_id );
 		}
 	}
 
@@ -129,7 +155,7 @@ class Sync {
 			return;
 		}
 
-		$this->sync_user_groups( $user_id );
+		$this->schedule_group_sync( $user_id );
 	}
 
 	/**
@@ -144,7 +170,7 @@ class Sync {
 			return;
 		}
 
-		$this->sync_user_groups( $user_id );
+		$this->schedule_group_sync( $user_id );
 	}
 
 	/**
@@ -159,7 +185,44 @@ class Sync {
 			return;
 		}
 
-		$this->sync_user_groups( $user_id );
+		$this->schedule_group_sync( $user_id );
+	}
+
+	/**
+	 * Schedule a user for group sync (deferred until shutdown)
+	 *
+	 * @param int $user_id WordPress user ID.
+	 */
+	private function schedule_group_sync( $user_id ) {
+		// Add user to pending sync if not already scheduled
+		if ( ! in_array( $user_id, $this->pending_group_sync, true ) ) {
+			$this->pending_group_sync[] = $user_id;
+		}
+	}
+
+	/**
+	 * Process all pending group syncs in a single batch
+	 * Called during WordPress shutdown hook
+	 */
+	public function process_pending_group_syncs() {
+		if ( empty( $this->pending_group_sync ) ) {
+			return;
+		}
+
+		$features = get_option( 'wp_cognito_features', array() );
+		if ( empty( $features['group_sync'] ) ) {
+			return;
+		}
+
+		$user_count = count( $this->pending_group_sync );
+		$this->api->log_message( "Processing batched group sync for {$user_count} user(s): " . implode( ', ', $this->pending_group_sync ), 'info' );
+
+		foreach ( $this->pending_group_sync as $user_id ) {
+			$this->sync_user_groups( $user_id );
+		}
+
+		// Clear the pending array
+		$this->pending_group_sync = array();
 	}
 
 	/**

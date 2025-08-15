@@ -671,80 +671,89 @@ class Auth {
 	 * @param array $cognito_data User data from Cognito.
 	 */
 	private function update_user_from_cognito( $user_id, $cognito_data ) {
-		$updates = array();
-
-		// Handle first name and last name with intelligent fallback.
-		$first_name = null;
-		$last_name  = null;
-
-		// Priority 1: Use given_name and family_name if available.
-		if ( isset( $cognito_data['given_name'] ) && ! empty( $cognito_data['given_name'] ) ) {
-			$first_name = $cognito_data['given_name'];
-		}
-		if ( isset( $cognito_data['family_name'] ) && ! empty( $cognito_data['family_name'] ) ) {
-			$last_name = $cognito_data['family_name'];
-		}
-
-		// Priority 2: If given_name/family_name not available, try custom fields.
-		if ( ! $first_name && isset( $cognito_data['custom:first_name'] ) ) {
-			$first_name = $cognito_data['custom:first_name'];
-		}
-		if ( ! $last_name && isset( $cognito_data['custom:last_name'] ) ) {
-			$last_name = $cognito_data['custom:last_name'];
-		}
-
-		// Priority 3: If still no first/last name, intelligently split the 'name' field.
-		if ( ( ! $first_name || ! $last_name ) && isset( $cognito_data['name'] ) && ! empty( $cognito_data['name'] ) ) {
-			$full_name  = trim( $cognito_data['name'] );
-			$name_parts = explode( ' ', $full_name, 2 ); // Split into max 2 parts.
-
-			if ( ! $first_name ) {
-				$first_name = $name_parts[0];
-			}
-			if ( ! $last_name && count( $name_parts ) > 1 ) {
-				$last_name = $name_parts[1];
-			}
-		}
-
-		// Update WordPress user meta with names.
-		if ( $first_name ) {
-			update_user_meta( $user_id, 'first_name', $first_name );
-		}
-
-		if ( $last_name ) {
-			update_user_meta( $user_id, 'last_name', $last_name );
-		}
-
-		// Update display name - priority: existing 'name' field, then constructed from first/last.
-		if ( isset( $cognito_data['name'] ) && ! empty( $cognito_data['name'] ) ) {
-			$updates['display_name'] = $cognito_data['name'];
-		} elseif ( $first_name && $last_name ) {
-			$updates['display_name'] = trim( $first_name . ' ' . $last_name );
-		} elseif ( $first_name ) {
-			$updates['display_name'] = $first_name;
-		}
-
-		// Store Cognito groups for content restriction.
-		if ( isset( $cognito_data['cognito:groups'] ) ) {
-			update_user_meta( $user_id, 'cognito_groups', $cognito_data['cognito:groups'] );
-		}
-
-		// Update custom attributes.
-		if ( isset( $cognito_data['custom:wp_memberrank'] ) ) {
-			update_user_meta( $user_id, 'wpuef_cid_c6', $cognito_data['custom:wp_memberrank'] );
-		}
-
-		if ( isset( $cognito_data['custom:wp_membercategory'] ) ) {
-			update_user_meta( $user_id, 'wpuef_cid_c10', $cognito_data['custom:wp_membercategory'] );
-		}
-
-		if ( ! empty( $updates ) ) {
-			$updates['ID'] = $user_id;
-			wp_update_user( $updates );
-		}
-
-		// Handle group memberships.
+		// Set flag to prevent WordPress->Cognito sync during authentication
+		set_transient( 'cognito_auth_in_progress_' . $user_id, true, 30 );
+		
+		$features = get_option( 'wp_cognito_features', array() );
+		$data_master = isset( $features['user_data_master'] ) ? $features['user_data_master'] : 'wordpress';
+		
+		// Always handle group memberships regardless of data mastering
 		$this->sync_user_groups_from_cognito( $user_id, $cognito_data );
+		
+		// Only sync user profile data if Cognito is the master for user data
+		// TODO: When Cognito is master, future enhancement should implement webhook-based
+		// sync instead of login-time sync to reduce API overhead and improve login performance
+		if ( 'cognito' === $data_master ) {
+			$updates = array();
+
+			// Handle first name and last name with intelligent fallback.
+			$first_name = null;
+			$last_name  = null;
+
+			// Priority 1: Use given_name and family_name if available.
+			if ( isset( $cognito_data['given_name'] ) && ! empty( $cognito_data['given_name'] ) ) {
+				$first_name = $cognito_data['given_name'];
+			}
+			if ( isset( $cognito_data['family_name'] ) && ! empty( $cognito_data['family_name'] ) ) {
+				$last_name = $cognito_data['family_name'];
+			}
+
+			// Priority 2: If given_name/family_name not available, try custom fields.
+			if ( ! $first_name && isset( $cognito_data['custom:first_name'] ) ) {
+				$first_name = $cognito_data['custom:first_name'];
+			}
+			if ( ! $last_name && isset( $cognito_data['custom:last_name'] ) ) {
+				$last_name = $cognito_data['custom:last_name'];
+			}
+
+			// Priority 3: If still no first/last name, intelligently split the 'name' field.
+			if ( ( ! $first_name || ! $last_name ) && isset( $cognito_data['name'] ) && ! empty( $cognito_data['name'] ) ) {
+				$full_name  = trim( $cognito_data['name'] );
+				$name_parts = explode( ' ', $full_name, 2 ); // Split into max 2 parts.
+
+				if ( ! $first_name ) {
+					$first_name = $name_parts[0];
+				}
+				if ( ! $last_name && count( $name_parts ) > 1 ) {
+					$last_name = $name_parts[1];
+				}
+			}
+
+			// Update WordPress user meta with names.
+			if ( $first_name ) {
+				update_user_meta( $user_id, 'first_name', $first_name );
+			}
+
+			if ( $last_name ) {
+				update_user_meta( $user_id, 'last_name', $last_name );
+			}
+
+			// Update display name - priority: existing 'name' field, then constructed from first/last.
+			if ( isset( $cognito_data['name'] ) && ! empty( $cognito_data['name'] ) ) {
+				$updates['display_name'] = $cognito_data['name'];
+			} elseif ( $first_name && $last_name ) {
+				$updates['display_name'] = trim( $first_name . ' ' . $last_name );
+			} elseif ( $first_name ) {
+				$updates['display_name'] = $first_name;
+			}
+
+			// Update custom attributes.
+			if ( isset( $cognito_data['custom:wp_memberrank'] ) ) {
+				update_user_meta( $user_id, 'wpuef_cid_c6', $cognito_data['custom:wp_memberrank'] );
+			}
+
+			if ( isset( $cognito_data['custom:wp_membercategory'] ) ) {
+				update_user_meta( $user_id, 'wpuef_cid_c10', $cognito_data['custom:wp_membercategory'] );
+			}
+
+			if ( ! empty( $updates ) ) {
+				$updates['ID'] = $user_id;
+				wp_update_user( $updates );
+			}
+		}
+		
+		// Clear the flag
+		delete_transient( 'cognito_auth_in_progress_' . $user_id );
 	}
 
 	/**
@@ -756,21 +765,9 @@ class Auth {
 	private function sync_user_groups_from_cognito( $user_id, $cognito_data ) {
 		$cognito_groups = isset( $cognito_data['cognito:groups'] ) ? $cognito_data['cognito:groups'] : array();
 
-		$user          = new \WP_User( $user_id );
-		$current_roles = $user->roles;
-		$synced_groups = get_option( 'wp_cognito_sync_groups', array() );
-
-		foreach ( $synced_groups as $wp_role ) {
-			$cognito_group_name = "WP_{$wp_role}";
-
-			if ( in_array( $cognito_group_name, $cognito_groups, true ) ) {
-				if ( ! in_array( $wp_role, $current_roles, true ) ) {
-					$user->add_role( $wp_role );
-				}
-			} elseif ( in_array( $wp_role, $current_roles, true ) ) {
-					$user->remove_role( $wp_role );
-			}
-		}
+		// Store Cognito groups for content restriction and other applications
+		// This does NOT change WordPress roles - only updates metadata
+		update_user_meta( $user_id, 'cognito_groups', $cognito_groups );
 	}
 
 	/**
