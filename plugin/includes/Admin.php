@@ -35,6 +35,8 @@ class Admin {
 		add_action( 'wp_ajax_cognito_test_connection', array( $this, 'ajax_test_connection' ) );
 		add_action( 'wp_ajax_cognito_test_sync_connection', array( $this, 'ajax_test_sync_connection' ) );
 		add_action( 'wp_ajax_cognito_test_wp_http', array( $this, 'ajax_test_wp_http' ) );
+		add_action( 'wp_ajax_cognito_bulk_sync_step', array( $this, 'ajax_bulk_sync_step' ) );
+		add_action( 'wp_ajax_cognito_backfill_subs_step', array( $this, 'ajax_backfill_subs_step' ) );
 	}
 
 	/**
@@ -155,6 +157,7 @@ class Admin {
 		register_setting( 'wp_cognito_sync_settings', 'wp_cognito_sync_api_key' );
 		register_setting( 'wp_cognito_sync_settings', 'wp_cognito_sync_on_login' );
 		register_setting( 'wp_cognito_sync_settings', 'wp_cognito_sync_groups' );
+		register_setting( 'wp_cognito_sync_settings', 'wp_cognito_tenant_id' );
 	}
 
 	/**
@@ -599,6 +602,22 @@ class Admin {
 			<table class="form-table">
 				<tr>
 					<th scope="row">
+						<label for="wp_cognito_tenant_id"><?php esc_html_e( 'Tenant ID', 'wp-cognito-auth' ); ?></label>
+					</th>
+					<td>
+						<input type="text"
+								name="wp_cognito_tenant_id"
+								id="wp_cognito_tenant_id"
+								value="<?php echo esc_attr( get_option( 'wp_cognito_tenant_id' ) ); ?>"
+								class="regular-text"
+								placeholder="tenantId">
+						<p class="description">
+							<?php esc_html_e( 'MyBosun tenant identifier (slug). Sent on every sync request and used by the Lambda to map roles to the correct Cognito groups (MyBosun_{tenantId}_{level}).', 'wp-cognito-auth' ); ?>
+						</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row">
 						<label for="wp_cognito_sync_api_url"><?php esc_html_e( 'Sync API URL', 'wp-cognito-auth' ); ?></label>
 					</th>
 					<td>
@@ -829,6 +848,7 @@ class Admin {
 		$sync_direction = sanitize_text_field( $_POST['sync_direction'] ?? 'wp_to_cognito' );
 		$user_selection = sanitize_text_field( $_POST['user_selection'] ?? 'all' );
 		$selected_role  = sanitize_text_field( $_POST['selected_role'] ?? '' );
+		$restart        = ! empty( $_POST['restart_offset'] );
 
 		// Validate role selection if specified.
 		if ( $user_selection === 'role' && empty( $selected_role ) ) {
@@ -845,22 +865,33 @@ class Admin {
 			exit;
 		}
 
-		// Initialize API if needed.
+		// Initialize API + Sync. Bulk operations live on Sync (the API class is
+		// the lower-level HTTP wrapper).
 		if ( ! $this->api ) {
 			$this->api = new API();
 		}
+		$sync = new \WP_Cognito_Auth\Sync( $this->api );
 
-		// Perform the bulk sync based on user selection.
-		if ( $user_selection === 'role' ) {
-			$result = $this->api->bulk_sync_users_by_role( $selected_role );
-		} else {
-			$result = $this->api->bulk_sync_users();
+		if ( $restart ) {
+			$sync->reset_bulk_sync_offset();
 		}
+
+		// Enqueue one chunk (≤ MAX_BATCHES_PER_REQUEST × ENQUEUE_BATCH_SIZE
+		// users). If the run is incomplete, the offset transient lets the next
+		// click resume.
+		$role   = $user_selection === 'role' ? $selected_role : '';
+		$result = $sync->bulk_sync_users( $role );
 
 		// Set results in transient for display.
 		set_transient( 'cognito_bulk_sync_results', $result, HOUR_IN_SECONDS );
 
-		$message = $result && ! empty( $result['processed'] ) ? 'sync_completed' : 'sync_failed';
+		if ( ! is_array( $result ) || empty( $result['processed'] ) && empty( $result['complete'] ) ) {
+			$message = 'sync_failed';
+		} elseif ( ! empty( $result['complete'] ) ) {
+			$message = 'sync_completed';
+		} else {
+			$message = 'sync_partial';
+		}
 
 		// Redirect with success message.
 		wp_redirect(
@@ -874,6 +905,73 @@ class Admin {
 			)
 		);
 		exit;
+	}
+
+	/**
+	 * AJAX endpoint for the auto-continuing bulk sync UI.
+	 *
+	 * Each call processes one server-side tick (up to 100 users) and returns
+	 * the same stats array as {@see Sync::bulk_sync_users()}. The browser
+	 * keeps re-firing this until `complete: true`, so the admin clicks once
+	 * and watches a progress bar instead of re-clicking the form every ~100
+	 * users.
+	 */
+	public function ajax_bulk_sync_step() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Insufficient permissions' ), 403 );
+		}
+
+		check_ajax_referer( 'cognito_bulk_sync_step', '_ajax_nonce' );
+
+		$user_selection = sanitize_text_field( wp_unslash( $_POST['user_selection'] ?? 'all' ) );
+		$selected_role  = sanitize_text_field( wp_unslash( $_POST['selected_role'] ?? '' ) );
+		$restart        = ! empty( $_POST['restart_offset'] );
+
+		if ( $user_selection === 'role' && empty( $selected_role ) ) {
+			wp_send_json_error( array( 'message' => __( 'Role selection required', 'wp-cognito-auth' ) ), 400 );
+		}
+
+		if ( ! $this->api ) {
+			$this->api = new API();
+		}
+		$sync = new \WP_Cognito_Auth\Sync( $this->api );
+
+		if ( $restart ) {
+			$sync->reset_bulk_sync_offset();
+		}
+
+		$role   = $user_selection === 'role' ? $selected_role : '';
+		$result = $sync->bulk_sync_users( $role );
+
+		wp_send_json_success( $result );
+	}
+
+	/**
+	 * AJAX tick for the Cognito sub backfill. Same cursor-resume pattern as
+	 * {@see ajax_bulk_sync_step()} — the browser polls until `complete` is
+	 * true so a ~15s wp_remote_post window never blocks a large backfill run.
+	 */
+	public function ajax_backfill_subs_step() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Insufficient permissions' ), 403 );
+		}
+
+		check_ajax_referer( 'cognito_backfill_subs_step', '_ajax_nonce' );
+
+		$restart = ! empty( $_POST['restart_offset'] );
+
+		if ( ! $this->api ) {
+			$this->api = new API();
+		}
+		$sync = new \WP_Cognito_Auth\Sync( $this->api );
+
+		if ( $restart ) {
+			$sync->reset_backfill_offset();
+		}
+
+		$result = $sync->backfill_cognito_ids();
+
+		wp_send_json_success( $result );
 	}
 
 	public function handle_test_sync() {
@@ -1126,17 +1224,33 @@ class Admin {
 					if ( $results ) {
 						echo '<div class="notice notice-success is-dismissible"><p>';
 						printf(
-							__( 'Bulk sync completed successfully. Processed: %1$d, Created: %2$d, Updated: %3$d, Failed: %4$d', 'wp-cognito-auth' ),
+							__( 'Bulk sync complete. Processed: %1$d of %2$d. Enqueued for async processing: %3$d. Failed: %4$d.', 'wp-cognito-auth' ),
 							$results['processed'] ?? 0,
-							$results['created'] ?? 0,
-							$results['updated'] ?? 0,
+							$results['total'] ?? ( $results['processed'] ?? 0 ),
+							$results['enqueued'] ?? 0,
 							$results['failed'] ?? 0
 						);
 						echo '</p></div>';
 						delete_transient( 'cognito_bulk_sync_results' );
 					} else {
 						echo '<div class="notice notice-success is-dismissible"><p>';
-						echo __( 'Bulk sync completed successfully. Check the logs for detailed results.', 'wp-cognito-auth' );
+						echo __( 'Bulk sync complete. Check the logs for detailed results.', 'wp-cognito-auth' );
+						echo '</p></div>';
+					}
+					break;
+				case 'sync_partial':
+					$results = get_transient( 'cognito_bulk_sync_results' );
+					if ( $results ) {
+						echo '<div class="notice notice-info is-dismissible"><p>';
+						printf(
+							__( 'Bulk sync chunk processed: %1$d users (offset %2$d → %3$d of %4$d). Enqueued: %5$d, Failed: %6$d. Click "Start Bulk Sync" again to continue from where it left off.', 'wp-cognito-auth' ),
+							$results['processed'] ?? 0,
+							$results['start'] ?? 0,
+							$results['next_offset'] ?? 0,
+							$results['total'] ?? 0,
+							$results['enqueued'] ?? 0,
+							$results['failed'] ?? 0
+						);
 						echo '</p></div>';
 					}
 					break;
@@ -1370,9 +1484,15 @@ define('WP_DEBUG_LOG', true);</code></pre>
 
 					<div class="sync-action-box">
 						<h3><?php esc_html_e( 'Full User Sync', 'wp-cognito-auth' ); ?></h3>
-						<p><?php esc_html_e( 'Synchronize all WordPress users with Cognito. Creates new users in Cognito and updates existing ones. This operation cannot be undone.', 'wp-cognito-auth' ); ?></p>
+						<p><?php esc_html_e( 'Enqueue WordPress users to the MyBosun sync queue. Each click processes up to 100 users (4 batches of 25); large user bases are completed by clicking again — progress resumes from the saved offset.', 'wp-cognito-auth' ); ?></p>
+						<?php
+						$resume_offset = (int) get_transient( \WP_Cognito_Auth\Sync::OFFSET_TRANSIENT );
+						if ( $resume_offset > 0 ) {
+							echo '<p><em>' . sprintf( esc_html__( 'Resume offset: %d (a previous run was interrupted; clicking will continue from here).', 'wp-cognito-auth' ), $resume_offset ) . '</em></p>';
+						}
+						?>
 
-						<form method="post" action="<?php echo admin_url( 'admin-post.php' ); ?>">
+						<form id="cognito-bulk-sync-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 							<?php wp_nonce_field( 'cognito_bulk_sync' ); ?>
 							<input type="hidden" name="action" value="cognito_bulk_sync">
 							<input type="hidden" name="sync_direction" value="wp_to_cognito">
@@ -1406,14 +1526,36 @@ define('WP_DEBUG_LOG', true);</code></pre>
 										?>
 									</select>
 								</div>
+
+								<label style="display: block; margin-top: 12px;">
+									<input type="checkbox" name="restart_offset" value="1">
+									<?php esc_html_e( 'Restart from beginning (ignore saved offset)', 'wp-cognito-auth' ); ?>
+								</label>
 							</div>
 
 							<p style="margin-top: 15px;">
-								<button type="submit" class="button button-primary">
-									<?php esc_html_e( 'Start Full Sync', 'wp-cognito-auth' ); ?>
+								<button type="submit" class="button button-primary" id="cognito-bulk-sync-start">
+									<?php esc_html_e( 'Start Bulk Sync', 'wp-cognito-auth' ); ?>
+								</button>
+								<button type="button" class="button" id="cognito-bulk-sync-stop" style="display:none; margin-left:8px;">
+									<?php esc_html_e( 'Stop', 'wp-cognito-auth' ); ?>
 								</button>
 							</p>
 						</form>
+
+						<div id="cognito-bulk-sync-progress" style="display:none; margin-top:20px;">
+							<h4 style="margin-top:0;"><?php esc_html_e( 'Bulk sync running…', 'wp-cognito-auth' ); ?></h4>
+							<div style="background:#e0e0e0; height:24px; border-radius:4px; overflow:hidden; border:1px solid #ccd0d4;">
+								<div id="cognito-bulk-sync-bar" style="background:#2271b1; height:100%; width:0%; transition:width .3s; text-align:center; color:#fff; font-size:12px; line-height:24px;">0%</div>
+							</div>
+							<p id="cognito-bulk-sync-stats" style="margin:10px 0 6px 0; font-family:Menlo,Consolas,monospace; font-size:12px;">
+								<?php esc_html_e( 'Starting…', 'wp-cognito-auth' ); ?>
+							</p>
+							<details id="cognito-bulk-sync-errors-wrap" style="display:none;">
+								<summary style="cursor:pointer; color:#d63638;"><?php esc_html_e( 'Errors (click to expand)', 'wp-cognito-auth' ); ?></summary>
+								<div id="cognito-bulk-sync-errors" style="max-height:180px; overflow:auto; font-family:Menlo,Consolas,monospace; font-size:11px; background:#fafafa; padding:8px; border:1px solid #ddd; margin-top:6px; white-space:pre-wrap;"></div>
+							</details>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -1451,6 +1593,177 @@ define('WP_DEBUG_LOG', true);</code></pre>
 			<?php endif; ?>
 
 			<div class="cognito-card">
+				<h2><?php esc_html_e( 'Cognito ID Backfill', 'wp-cognito-auth' ); ?></h2>
+				<p class="description">
+					<?php esc_html_e( 'Bulk sync is asynchronous (SQS) and does not return the Cognito sub to WordPress, so linked users will initially show no Cognito User ID. Run this after a bulk sync has finished processing to resolve missing subs and restore the linked-user record. Safe to re-run — only users without a stored Cognito ID are queried.', 'wp-cognito-auth' ); ?>
+				</p>
+
+				<?php
+				$backfill_offset = (int) get_transient( \WP_Cognito_Auth\Sync::BACKFILL_OFFSET_TRANSIENT );
+				if ( $backfill_offset > 0 ) {
+					echo '<p><em>' . sprintf( esc_html__( 'Resume offset: %d (a previous run was interrupted; clicking will continue from here).', 'wp-cognito-auth' ), $backfill_offset ) . '</em></p>';
+				}
+				?>
+
+				<form id="cognito-backfill-form">
+					<label style="display: block; margin-bottom: 8px;">
+						<input type="checkbox" name="restart_offset" value="1">
+						<?php esc_html_e( 'Restart from beginning (ignore saved offset)', 'wp-cognito-auth' ); ?>
+					</label>
+					<p style="margin-top: 15px;">
+						<button type="submit" class="button button-primary" id="cognito-backfill-start">
+							<?php esc_html_e( 'Backfill Cognito IDs', 'wp-cognito-auth' ); ?>
+						</button>
+						<button type="button" class="button" id="cognito-backfill-stop" style="display:none; margin-left:8px;">
+							<?php esc_html_e( 'Stop', 'wp-cognito-auth' ); ?>
+						</button>
+					</p>
+				</form>
+
+				<div id="cognito-backfill-progress" style="display:none; margin-top:20px;">
+					<h4 style="margin-top:0;"><?php esc_html_e( 'Backfill running…', 'wp-cognito-auth' ); ?></h4>
+					<div style="background:#e0e0e0; height:24px; border-radius:4px; overflow:hidden; border:1px solid #ccd0d4;">
+						<div id="cognito-backfill-bar" style="background:#2271b1; height:100%; width:0%; transition:width .3s; text-align:center; color:#fff; font-size:12px; line-height:24px;">0%</div>
+					</div>
+					<p id="cognito-backfill-stats" style="margin:10px 0 6px 0; font-family:Menlo,Consolas,monospace; font-size:12px;">
+						<?php esc_html_e( 'Starting…', 'wp-cognito-auth' ); ?>
+					</p>
+					<details id="cognito-backfill-errors-wrap" style="display:none;">
+						<summary style="cursor:pointer; color:#d63638;"><?php esc_html_e( 'Errors (click to expand)', 'wp-cognito-auth' ); ?></summary>
+						<div id="cognito-backfill-errors" style="max-height:180px; overflow:auto; font-family:Menlo,Consolas,monospace; font-size:11px; background:#fafafa; padding:8px; border:1px solid #ddd; margin-top:6px; white-space:pre-wrap;"></div>
+					</details>
+				</div>
+
+				<script>
+				jQuery(document).ready(function($) {
+					var nonce   = <?php echo wp_json_encode( wp_create_nonce( 'cognito_backfill_subs_step' ) ); ?>;
+					var ajaxUrl = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+					var i18n = {
+						stopped:      <?php echo wp_json_encode( __( 'Stopped. Click Backfill Cognito IDs to resume from the saved offset.', 'wp-cognito-auth' ) ); ?>,
+						complete:     <?php echo wp_json_encode( __( 'Backfill complete.', 'wp-cognito-auth' ) ); ?>,
+						serverError:  <?php echo wp_json_encode( __( 'Server error', 'wp-cognito-auth' ) ); ?>,
+						networkError: <?php echo wp_json_encode( __( 'Network error', 'wp-cognito-auth' ) ); ?>,
+						stats:        <?php echo wp_json_encode( __( 'Processed %1$d / %2$d (%3$d%%) — resolved %4$d, not found %5$d, errored %6$d', 'wp-cognito-auth' ) ); ?>,
+						nothingToDo:  <?php echo wp_json_encode( __( 'No users are missing a Cognito ID.', 'wp-cognito-auth' ) ); ?>
+					};
+
+					var $form     = $('#cognito-backfill-form');
+					var $progress = $('#cognito-backfill-progress');
+					var $bar      = $('#cognito-backfill-bar');
+					var $stats    = $('#cognito-backfill-stats');
+					var $errWrap  = $('#cognito-backfill-errors-wrap');
+					var $errors   = $('#cognito-backfill-errors');
+					var $start    = $('#cognito-backfill-start');
+					var $stop     = $('#cognito-backfill-stop');
+
+					var totals = { resolved: 0, notFound: 0, errored: 0 };
+					var stopRequested = false;
+					var inFlight      = false;
+
+					function fmtStats(processed, total, resolved, notFound, errored) {
+						var pct = total > 0 ? Math.floor((processed / total) * 100) : 0;
+						return i18n.stats
+							.replace('%1$d', processed)
+							.replace('%2$d', total)
+							.replace('%3$d', pct)
+							.replace('%4$d', resolved)
+							.replace('%5$d', notFound)
+							.replace('%6$d', errored);
+					}
+
+					function appendErrors(errs) {
+						if (!errs || !errs.length) return;
+						$errWrap.show();
+						var existing = $errors.text();
+						$errors.text((existing ? existing + '\n' : '') + errs.join('\n'));
+						$errors.scrollTop($errors[0].scrollHeight);
+					}
+
+					function resetButtons() {
+						$start.prop('disabled', false);
+						$stop.hide();
+						stopRequested = false;
+					}
+
+					function tick(payload) {
+						if (stopRequested) {
+							$stats.text(i18n.stopped);
+							resetButtons();
+							return;
+						}
+						inFlight = true;
+						$.post(ajaxUrl, payload).done(function(resp) {
+							inFlight = false;
+							if (!resp || !resp.success) {
+								var msg = (resp && resp.data && resp.data.message) || i18n.serverError;
+								appendErrors([msg]);
+								resetButtons();
+								return;
+							}
+							var d = resp.data || {};
+							totals.resolved += d.resolved || 0;
+							totals.notFound += d.notFound || 0;
+							totals.errored  += d.errored || 0;
+							if (d.errors && d.errors.length) appendErrors(d.errors);
+
+							var total = d.total || 0;
+							var processedSoFar = d.next_offset || 0;
+							var pct = total > 0 ? Math.min(100, Math.floor((processedSoFar / total) * 100)) : (d.complete ? 100 : 0);
+							$bar.css('width', pct + '%').text(pct + '%');
+							$stats.text(fmtStats(processedSoFar, total, totals.resolved, totals.notFound, totals.errored));
+
+							payload.restart_offset = '';
+
+							if (d.complete) {
+								if (total === 0 && totals.resolved === 0) {
+									$stats.text(i18n.nothingToDo);
+								} else {
+									$bar.css('width', '100%').text('100%');
+									$stats.text(i18n.complete + ' ' + fmtStats(total, total, totals.resolved, totals.notFound, totals.errored));
+								}
+								resetButtons();
+								return;
+							}
+
+							setTimeout(function() { tick(payload); }, 400);
+						}).fail(function(xhr) {
+							inFlight = false;
+							appendErrors([i18n.networkError + ': HTTP ' + xhr.status]);
+							resetButtons();
+						});
+					}
+
+					$form.on('submit', function(e) {
+						e.preventDefault();
+						totals = { resolved: 0, notFound: 0, errored: 0 };
+						$errors.empty();
+						$errWrap.hide();
+						$bar.css('width', '0%').text('0%');
+						$stats.text('Starting…');
+						$progress.show();
+						$start.prop('disabled', true);
+						$stop.show();
+						stopRequested = false;
+
+						tick({
+							action:         'cognito_backfill_subs_step',
+							_ajax_nonce:    nonce,
+							restart_offset: $form.find('input[name="restart_offset"]').is(':checked') ? '1' : ''
+						});
+					});
+
+					$stop.on('click', function() {
+						stopRequested = true;
+						if (!inFlight) {
+							$stats.text(i18n.stopped);
+							resetButtons();
+						}
+					});
+				});
+				</script>
+			</div>
+
+			<div class="cognito-card">
 				<h2><?php esc_html_e( 'Sync Statistics', 'wp-cognito-auth' ); ?></h2>
 				<?php $this->render_sync_stats(); ?>
 			</div>
@@ -1481,25 +1794,137 @@ define('WP_DEBUG_LOG', true);</code></pre>
 
 		<script>
 		jQuery(document).ready(function($) {
-			// Handle role selection toggle.
+			var nonce         = <?php echo wp_json_encode( wp_create_nonce( 'cognito_bulk_sync_step' ) ); ?>;
+			var ajaxUrl       = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+			var i18n          = {
+				roleRequired: <?php echo wp_json_encode( __( 'Please select a role to sync.', 'wp-cognito-auth' ) ); ?>,
+				stopped:      <?php echo wp_json_encode( __( 'Stopped. Click Start Bulk Sync to resume from the saved offset.', 'wp-cognito-auth' ) ); ?>,
+				complete:     <?php echo wp_json_encode( __( 'Bulk sync complete.', 'wp-cognito-auth' ) ); ?>,
+				serverError:  <?php echo wp_json_encode( __( 'Server error', 'wp-cognito-auth' ) ); ?>,
+				networkError: <?php echo wp_json_encode( __( 'Network error', 'wp-cognito-auth' ) ); ?>,
+				stats:        <?php echo wp_json_encode( __( 'Processed %1$d / %2$d (%3$d%%) — enqueued %4$d, failed %5$d', 'wp-cognito-auth' ) ); ?>
+			};
+
 			$('input[name="user_selection"]').on('change', function() {
-				if ($(this).val() === 'role') {
-					$('#role-selection').show();
-				} else {
-					$('#role-selection').hide();
-				}
+				$('#role-selection').toggle($(this).val() === 'role');
 			});
 
-			// Validate form submission.
-			$('form[action*="cognito_bulk_sync"]').on('submit', function(e) {
-				var userSelection = $('input[name="user_selection"]:checked').val();
-				if (userSelection === 'role') {
-					var selectedRole = $('select[name="selected_role"]').val();
-					if (!selectedRole) {
-						e.preventDefault();
-						alert('<?php esc_js( __( 'Please select a role to sync.', 'wp-cognito-auth' ) ); ?>');
-						return false;
+			var $form     = $('#cognito-bulk-sync-form');
+			var $progress = $('#cognito-bulk-sync-progress');
+			var $bar      = $('#cognito-bulk-sync-bar');
+			var $stats    = $('#cognito-bulk-sync-stats');
+			var $errWrap  = $('#cognito-bulk-sync-errors-wrap');
+			var $errors   = $('#cognito-bulk-sync-errors');
+			var $start    = $('#cognito-bulk-sync-start');
+			var $stop     = $('#cognito-bulk-sync-stop');
+
+			var totals     = { enqueued: 0, failed: 0 };
+			var stopRequested = false;
+			var inFlight      = false;
+
+			function fmtStats(processed, total, enqueued, failed) {
+				var pct = total > 0 ? Math.floor((processed / total) * 100) : 0;
+				return i18n.stats
+					.replace('%1$d', processed)
+					.replace('%2$d', total)
+					.replace('%3$d', pct)
+					.replace('%4$d', enqueued)
+					.replace('%5$d', failed);
+			}
+
+			function appendErrors(errs) {
+				if (!errs || !errs.length) return;
+				$errWrap.show();
+				var existing = $errors.text();
+				$errors.text((existing ? existing + '\n' : '') + errs.join('\n'));
+				$errors.scrollTop($errors[0].scrollHeight);
+			}
+
+			function tick(payload) {
+				if (stopRequested) {
+					$stats.text(i18n.stopped);
+					resetButtons();
+					return;
+				}
+				inFlight = true;
+				$.post(ajaxUrl, payload).done(function(resp) {
+					inFlight = false;
+					if (!resp || !resp.success) {
+						var msg = (resp && resp.data && resp.data.message) || i18n.serverError;
+						appendErrors([msg]);
+						resetButtons();
+						return;
 					}
+					var d = resp.data || {};
+					totals.enqueued += d.enqueued || 0;
+					totals.failed   += d.failed || 0;
+					if (d.errors && d.errors.length) appendErrors(d.errors);
+
+					var total = d.total || 0;
+					var processedSoFar = d.next_offset || 0;
+					var pct = total > 0 ? Math.min(100, Math.floor((processedSoFar / total) * 100)) : (d.complete ? 100 : 0);
+					$bar.css('width', pct + '%').text(pct + '%');
+					$stats.text(fmtStats(processedSoFar, total, totals.enqueued, totals.failed));
+
+					// Don't re-trigger restart on subsequent ticks.
+					payload.restart_offset = '';
+
+					if (d.complete) {
+						$bar.css('width', '100%').text('100%');
+						$stats.text(i18n.complete + ' ' + fmtStats(total, total, totals.enqueued, totals.failed));
+						resetButtons();
+						return;
+					}
+
+					// Brief breather between ticks; keeps the UI responsive
+					// and avoids hammering admin-ajax in a tight loop.
+					setTimeout(function() { tick(payload); }, 400);
+				}).fail(function(xhr) {
+					inFlight = false;
+					appendErrors([i18n.networkError + ': HTTP ' + xhr.status]);
+					resetButtons();
+				});
+			}
+
+			function resetButtons() {
+				$start.prop('disabled', false);
+				$stop.hide();
+				stopRequested = false;
+			}
+
+			$form.on('submit', function(e) {
+				e.preventDefault();
+				var userSelection = $form.find('input[name="user_selection"]:checked').val();
+				var selectedRole  = $form.find('select[name="selected_role"]').val() || '';
+				if (userSelection === 'role' && !selectedRole) {
+					alert(i18n.roleRequired);
+					return;
+				}
+
+				totals = { enqueued: 0, failed: 0 };
+				$errors.empty();
+				$errWrap.hide();
+				$bar.css('width', '0%').text('0%');
+				$stats.text('Starting…');
+				$progress.show();
+				$start.prop('disabled', true);
+				$stop.show();
+				stopRequested = false;
+
+				tick({
+					action:         'cognito_bulk_sync_step',
+					_ajax_nonce:    nonce,
+					user_selection: userSelection,
+					selected_role:  selectedRole,
+					restart_offset: $form.find('input[name="restart_offset"]').is(':checked') ? '1' : ''
+				});
+			});
+
+			$stop.on('click', function() {
+				stopRequested = true;
+				if (!inFlight) {
+					$stats.text(i18n.stopped);
+					resetButtons();
 				}
 			});
 		});
@@ -1650,24 +2075,10 @@ define('WP_DEBUG_LOG', true);</code></pre>
 		if ( $enabled ) {
 			if ( ! in_array( $group_name, $synced_groups ) ) {
 				$synced_groups[] = $group_name;
-
-				// Initialize API and Sync.
-				if ( ! $this->api ) {
-					$this->api = new API();
-				}
-
-				try {
-					// Create the group in Cognito.
-					$this->api->create_group( $group_name );
-					$message = 'group_sync_enabled';
-				} catch ( \Exception $e ) {
-					// Log the error but still enable sync locally.
-					if ( $this->api ) {
-						$this->api->log_message( "Failed to create group {$group_name}: " . $e->getMessage(), 'error' );
-					}
-					$message = 'group_creation_failed';
-				}
 			}
+			// v3.0: Cognito groups are created on demand by the sync Lambda;
+			// no upfront group-creation call is required here.
+			$message = 'group_sync_enabled';
 		} else {
 			$synced_groups = array_diff( $synced_groups, array( $group_name ) );
 			$message       = 'group_sync_disabled';
@@ -1706,14 +2117,17 @@ define('WP_DEBUG_LOG', true);</code></pre>
 		);
 
 		$synced_groups = get_option( 'wp_cognito_sync_groups', array() );
+		$tenant_id     = get_option( 'wp_cognito_tenant_id', '' );
 		foreach ( $synced_groups as $group_name ) {
 			++$stats['total'];
 			$users_in_role = get_users( array( 'role' => $group_name ) );
 			$member_count  = count( $users_in_role );
 
 			$stats['groups'][] = array(
-				'name'              => "WP_{$group_name}",
-				'action'            => 'create_if_needed',
+				'name'              => $tenant_id
+					? "MyBosun_{$tenant_id}_* (derived from {$group_name})"
+					: "(tenant ID unset) {$group_name}",
+				'action'            => 'reconcile_via_lambda',
 				'members_to_update' => $member_count,
 			);
 
@@ -1748,32 +2162,39 @@ define('WP_DEBUG_LOG', true);</code></pre>
 			$this->api = new API();
 		}
 
-		// Use Sync class for proper group synchronization.
+		// v3.0: re-push every user with an active Cognito link so the Lambda
+		// reconciles `MyBosun_{tenantId}_{level}` group membership from the
+		// `wp_roles` array on each payload.
 		$sync  = new \WP_Cognito_Auth\Sync( $this->api );
 		$stats = $sync->sync_groups();
 
-		// Also sync user group memberships.
 		$synced_groups    = get_option( 'wp_cognito_sync_groups', array() );
 		$membership_stats = array(
 			'memberships_updated' => 0,
 			'memberships_failed'  => 0,
 		);
 
+		$pushed_user_ids = array();
 		foreach ( $synced_groups as $group_name ) {
 			$users = get_users( array( 'role' => $group_name ) );
 			foreach ( $users as $user ) {
-				$cognito_id = get_user_meta( $user->ID, 'cognito_user_id', true );
-				if ( ! empty( $cognito_id ) ) {
-					if ( $this->api->update_group_membership( $cognito_id, $group_name, 'add' ) ) {
-						++$membership_stats['memberships_updated'];
-					} else {
-						++$membership_stats['memberships_failed'];
-					}
+				if ( in_array( $user->ID, $pushed_user_ids, true ) ) {
+					continue;
 				}
+				$cognito_id = get_user_meta( $user->ID, 'cognito_user_id', true );
+				if ( empty( $cognito_id ) ) {
+					continue;
+				}
+
+				if ( $sync->sync_user_groups( $user->ID ) ) {
+					++$membership_stats['memberships_updated'];
+				} else {
+					++$membership_stats['memberships_failed'];
+				}
+				$pushed_user_ids[] = $user->ID;
 			}
 		}
 
-		// Merge stats.
 		$final_stats              = array_merge( $stats, $membership_stats );
 		$final_stats['timestamp'] = current_time( 'mysql' );
 

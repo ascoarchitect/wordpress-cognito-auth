@@ -15,7 +15,69 @@ Parameters:
     Type: String
     Description: ID of the existing Cognito User Pool (e.g., us-west-2_xxxxxxxx)
 
+  # MyBosun cross-stack DDB table names (created by the yacht-charter-app SAM
+  # stack / Terraform tenants module). The sync Lambda needs to read wpSync
+  # config and write TenantMemberships + StudentProfile mirrors.
+  TenantConfigTableName:
+    Type: String
+    Description: Name of the MyBosun TenantConfig DynamoDB table
+
+  TenantMembershipsTableName:
+    Type: String
+    Description: Name of the MyBosun TenantMemberships DynamoDB table
+
+  StudentProfileTableName:
+    Type: String
+    Description: Name of the MyBosun StudentProfile DynamoDB table (uses UserIndex GSI for userId lookup)
+
+  MyBosunDynamoDBKMSKeyArn:
+    Type: String
+    Description: ARN of the customer-managed KMS key encrypting the MyBosun tenant DynamoDB tables. The sync Lambda role must be able to Decrypt (read) and GenerateDataKey (write) with this key.
+
 Resources:
+  # SQS Dead Letter Queue — receives messages that fail after maxReceiveCount
+  # attempts. Operators monitor depth; redrive manually after fixing root cause.
+  SyncDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub wp-cognito-sync-dlq-${Environment}
+      MessageRetentionPeriod: 1209600  # 14 days (max)
+
+  # SQS Main Queue — buffers bulk sync jobs from the WordPress plugin so the
+  # consumer Lambda can drain them under reserved-concurrency rate-limiting,
+  # decoupling WP-side wp_remote_post timeouts from Cognito API throughput.
+  SyncQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub wp-cognito-sync-queue-${Environment}
+      VisibilityTimeout: 180  # 6× Lambda timeout (30s)
+      MessageRetentionPeriod: 1209600  # 14 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SyncDLQ.Arn
+        maxReceiveCount: 3
+
+  # Wire SQS → consumer Lambda. BatchSize=5 with partial failure reporting so
+  # one bad message in a batch doesn't redeliver the others.
+  #
+  # ScalingConfig.MaximumConcurrency caps how much of the function's reserved
+  # concurrency the SQS poller may consume. Without this cap, SQS would scale
+  # up to the function's full ReservedConcurrentExecutions, starve the API
+  # Gateway path (which invokes the SAME Lambda for bulk_sync_enqueue), and
+  # the WP producer would start seeing API Gateway 500s. Holding SQS to 3
+  # slots leaves 7 slots permanently available for API Gateway and post-auth
+  # invocations — SQS then buffers the rest at rest, which is its job.
+  SyncEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt SyncQueue.Arn
+      FunctionName: !GetAtt LambdaFunction.Arn
+      BatchSize: 5
+      MaximumBatchingWindowInSeconds: 1
+      ScalingConfig:
+        MaximumConcurrency: 3
+      FunctionResponseTypes:
+        - ReportBatchItemFailures
+
   # Lambda Function
   LambdaFunction:
     Type: AWS::Lambda::Function
@@ -24,6 +86,19 @@ Resources:
       Handler: index.handler
       Architectures:
         - arm64
+      # Reserved concurrency caps total RPS into Cognito (~25 RPS limit on
+      # AdminAddUserToGroup / AdminListGroupsForUser) AND is partitioned
+      # between two invocation paths that share this Lambda:
+      #   - SQS trigger (consumer): capped at 3 via SyncEventSourceMapping's
+      #     ScalingConfig.MaximumConcurrency → ~6-9 RPS into Cognito, safely
+      #     under the 25 RPS limit.
+      #   - API Gateway (producer: bulk_sync_enqueue + ad-hoc single-user
+      #     sync from WP, plus post-auth role-sync): always gets the
+      #     remaining slots (7), so the producer is never throttled by
+      #     consumer draining.
+      # 800 users drains in ~90s at this rate; the trade-off vs. pre-3.0.3
+      # (flat 5) is slightly slower consumer for a reliable producer.
+      ReservedConcurrentExecutions: 10
       Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         ZipFile: |
@@ -40,9 +115,55 @@ Resources:
               AdminAddUserToGroupCommand,
               AdminRemoveUserFromGroupCommand
           } = require("@aws-sdk/client-cognito-identity-provider");
+          const {
+              SQSClient,
+              SendMessageBatchCommand
+          } = require("@aws-sdk/client-sqs");
+          const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
+          const {
+              DynamoDBDocumentClient,
+              GetCommand,
+              PutCommand,
+              UpdateCommand,
+              QueryCommand
+          } = require("@aws-sdk/lib-dynamodb");
           const client = new CognitoIdentityProviderClient({});
+          const sqs = new SQSClient({});
+          const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+          const SYNC_QUEUE_URL = process.env.SYNC_QUEUE_URL;
+          const TENANT_CONFIG_TABLE = process.env.TENANT_CONFIG_TABLE;
+          const TENANT_MEMBERSHIPS_TABLE = process.env.TENANT_MEMBERSHIPS_TABLE;
+          const STUDENT_PROFILES_TABLE = process.env.STUDENT_PROFILES_TABLE;
+          const MAX_BULK_BATCH = 25;
+          const SQS_BATCH_SIZE = 10;
+          // Cap WC-derived access at "member": tenant admin is granted manually
+          // via the MyBosun UI, never auto-granted from a WP `administrator` role.
+          const ALLOWED_WC_ACCESS_LEVELS = ['member', 'suspended'];
+          const TENANT_ACCESS_LEVELS = ['admin', 'member', 'suspended'];
           exports.handler = async (event) => {
               console.log('Received event:', JSON.stringify(event, null, 2));
+              const userPoolId = process.env.USER_POOL_ID;
+              if (!userPoolId) {
+                  throw new Error('USER_POOL_ID environment variable is required');
+              }
+
+              // SQS invocation — process each Record through the same per-message
+              // handler used by the synchronous API path. Partial failures are
+              // reported via batchItemFailures so SQS only retries the bad ones.
+              if (Array.isArray(event.Records) && event.Records.length > 0 && event.Records[0].eventSource === 'aws:sqs') {
+                  const batchItemFailures = [];
+                  for (const record of event.Records) {
+                      try {
+                          const body = JSON.parse(record.body);
+                          await processSyncMessage(userPoolId, body);
+                      } catch (err) {
+                          console.error(`SQS message ${record.messageId} failed:`, err);
+                          batchItemFailures.push({ itemIdentifier: record.messageId });
+                      }
+                  }
+                  return { batchItemFailures };
+              }
+
               try {
                   let body;
                   if (event.body) {
@@ -65,29 +186,39 @@ Resources:
                   console.log('Parsed body:', body);
                   const { action } = body;
                   console.log('Processing action:', action);
-                  const userPoolId = process.env.USER_POOL_ID;
-                  if (!userPoolId) {
-                      throw new Error('USER_POOL_ID environment variable is required');
-                  }
                   let result;
-                  switch (action) {
-                      case 'create_group':
-                          result = await handleGroupCreate(userPoolId, body.group);
-                          break;
-                      case 'update_group_membership':
-                          result = await handleGroupMembership(userPoolId, body.group);
-                          break;
-                      case 'create':
-                      case 'update':
-                      case 'delete':
-                          if (!body.user || !body.user.email) {
-                              throw new Error('User email is required for user operations');
-                          }
-                          result = await handleUserOperations(userPoolId, action, body.user);
-                          break;
-                      default:
-                          throw new Error('Invalid action specified');
+                  if (action === 'bulk_sync_enqueue') {
+                      result = await handleBulkSyncEnqueue(body);
+                      return {
+                          statusCode: 202,
+                          headers: {
+                              'Content-Type': 'application/json',
+                              'Access-Control-Allow-Origin': '*'
+                          },
+                          body: JSON.stringify({
+                              message: 'Accepted',
+                              result: result
+                          })
+                      };
                   }
+                  if (action === 'resolve_subs') {
+                      // Synchronous WP-initiated lookup used by the plugin to
+                      // backfill cognito_user_id user-meta after bulk sync (the
+                      // SQS path never returns the sub to WP).
+                      result = await handleResolveSubs(userPoolId, body);
+                      return {
+                          statusCode: 200,
+                          headers: {
+                              'Content-Type': 'application/json',
+                              'Access-Control-Allow-Origin': '*'
+                          },
+                          body: JSON.stringify({
+                              message: 'Success',
+                              result: result
+                          })
+                      };
+                  }
+                  result = await processSyncMessage(userPoolId, body);
                   console.log('Final result object being returned:', JSON.stringify(result, null, 2));
 
                   return {
@@ -115,6 +246,450 @@ Resources:
                   };
               }
           };
+
+          // Single per-message dispatcher shared by API Gateway and SQS paths.
+          async function processSyncMessage(userPoolId, body) {
+              const { action } = body;
+              switch (action) {
+                  case 'create_group':
+                  case 'update_group_membership':
+                      // Legacy v2.x actions — Cognito groups are now managed by
+                      // the tenant-aware sync below. Returning ok keeps older
+                      // plugin versions from logging spurious errors.
+                      console.log(`Action ${action} is a no-op in v3.0`);
+                      return { message: `${action} is a no-op in v3.0` };
+                  case 'create':
+                  case 'update':
+                  case 'delete':
+                      if (!body.user || !body.user.email) {
+                          throw new Error('User email is required for user operations');
+                      }
+                      // Tenant ID lives at the top level (injected by WP) but may
+                      // also appear on the user payload — accept either.
+                      const tenantId = body.tenantId || body.user.tenantId;
+                      if (!tenantId) {
+                          throw new Error('tenantId is required for user operations in v3.0');
+                      }
+                      const cognitoResult = await handleUserOperations(userPoolId, action, body.user);
+                      // Resolve the Cognito sub from the create/update response
+                      // (or look it up for older paths) so TenantMemberships and
+                      // StudentProfile.UserIndex are keyed correctly.
+                      const cognitoSub = await resolveCognitoSub(userPoolId, body.user, cognitoResult);
+                      try {
+                          if (action === 'delete') {
+                              await applyTenantUnsync(userPoolId, tenantId, body.user, cognitoSub);
+                          } else {
+                              await applyTenantSync(userPoolId, tenantId, body.user, cognitoSub);
+                          }
+                      } catch (err) {
+                          // Don't fail the entire sync if tenant-side mirror fails;
+                          // log loud so it surfaces in CloudWatch and DLQ retries.
+                          console.error('Tenant-sync mirror failed (cognito op succeeded):', err);
+                          throw err;
+                      }
+                      // Surface the resolved sub on the response so the WP
+                      // plugin can repopulate cognito_user_id user-meta after
+                      // an unlink, and self-heal records that were keyed on
+                      // the email by the legacy create-fallback path.
+                      // AdminUpdateUserAttributes doesn't return a User object,
+                      // so we synthesise one matching the create-response shape
+                      // the plugin already extracts from.
+                      if (action !== 'delete' && cognitoResult) {
+                          if (!cognitoResult.User) {
+                              cognitoResult.User = { Username: cognitoSub, Attributes: [] };
+                          }
+                          cognitoResult.User.Attributes = cognitoResult.User.Attributes || [];
+                          if (!cognitoResult.User.Attributes.some(a => a.Name === 'sub')) {
+                              cognitoResult.User.Attributes.push({ Name: 'sub', Value: cognitoSub });
+                          }
+                      }
+                      return cognitoResult;
+                  default:
+                      throw new Error(`Invalid action specified: ${action}`);
+              }
+          }
+
+          // ====================================================================
+          // Tenant-aware sync (v3.0)
+          // ====================================================================
+          //
+          // After the Cognito user create/update/delete completes, we mirror the
+          // change into MyBosun:
+          //
+          //   1. Look up wpSync config in TenantConfig (gates the whole flow).
+          //   2. Derive accessLevel from the user's wp_roles via accessLevelMap.
+          //      WC may only grant member/suspended (admin is MyBosun-owned).
+          //   3. Reconcile MyBosun_{tenantId}_{level} Cognito group membership.
+          //   4. Upsert TenantMemberships:
+          //        - on insert: status + roles/featureRoles from newUserDefaults
+          //        - on update: status only (preserve MyBosun-owned role state)
+          //   5. Mirror to StudentProfile if a row exists for this user/tenant
+          //      (post-auth Lambda owns first-time creation).
+          //
+          // ====================================================================
+
+          // Cognito sub format — UUIDv4. Used to validate cognito_user_id
+          // from the WP payload before trusting it as the TenantMembership PK.
+          const COGNITO_SUB_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+          async function resolveCognitoSub(userPoolId, user, cognitoResult) {
+              // Trust a passed cognito_user_id ONLY if it's a real Cognito sub.
+              // The WP plugin's "create -> already exists -> fall back to update"
+              // path passes the email here as a stand-in; if we accepted that
+              // verbatim we'd write the email as the TenantMembership userId PK
+              // and the post-auth Lambda would never find the record on login.
+              if (user.cognito_user_id && COGNITO_SUB_RE.test(user.cognito_user_id)) {
+                  return user.cognito_user_id;
+              }
+              // create response: result.User.Attributes contains "sub"
+              const userObj = cognitoResult && (cognitoResult.User || (cognitoResult.result && cognitoResult.result.User));
+              if (userObj && Array.isArray(userObj.Attributes)) {
+                  const subAttr = userObj.Attributes.find(a => a.Name === 'sub');
+                  if (subAttr) return subAttr.Value;
+              }
+              // update response or fallback: look up by email username.
+              try {
+                  const got = await client.send(new AdminGetUserCommand({
+                      UserPoolId: userPoolId,
+                      Username: user.email
+                  }));
+                  const subAttr = (got.UserAttributes || []).find(a => a.Name === 'sub');
+                  if (subAttr) return subAttr.Value;
+                  return got.Username;
+              } catch (err) {
+                  console.warn(`Failed to resolve Cognito sub for ${user.email}:`, err.name);
+                  return user.email; // last-resort
+              }
+          }
+
+          async function getWpSyncConfig(tenantId) {
+              if (!TENANT_CONFIG_TABLE) {
+                  throw new Error('TENANT_CONFIG_TABLE env var is required for tenant sync');
+              }
+              const { Item } = await ddb.send(new GetCommand({
+                  TableName: TENANT_CONFIG_TABLE,
+                  Key: { tenantId }
+              }));
+              if (!Item) {
+                  console.warn(`No TenantConfig found for tenantId=${tenantId}`);
+                  return null;
+              }
+              return Item.wpSync || null;
+          }
+
+          function deriveAccessLevel(wpRoles, accessLevelMap) {
+              const map = accessLevelMap || {};
+              const matched = (wpRoles || [])
+                  .map(role => map[role])
+                  .filter(level => ALLOWED_WC_ACCESS_LEVELS.includes(level));
+              // Highest privilege wins among allowed levels (member > suspended).
+              if (matched.includes('member')) return 'member';
+              if (matched.includes('suspended')) return 'suspended';
+              // Unmapped roles default to suspended (safe — denies access until
+              // an admin maps the role explicitly).
+              return 'suspended';
+          }
+
+          async function reconcileTenantGroups(userPoolId, username, tenantId, targetLevel) {
+              for (const level of TENANT_ACCESS_LEVELS) {
+                  const groupName = `MyBosun_${tenantId}_${level}`;
+                  if (level === targetLevel) {
+                      // Ensure group exists, then add user.
+                      try {
+                          await client.send(new GetGroupCommand({
+                              GroupName: groupName,
+                              UserPoolId: userPoolId
+                          }));
+                      } catch (err) {
+                          if (err.name === 'ResourceNotFoundException') {
+                              await client.send(new CreateGroupCommand({
+                                  GroupName: groupName,
+                                  UserPoolId: userPoolId,
+                                  Description: `MyBosun tenant access: ${tenantId} (${level})`
+                              }));
+                          } else {
+                              throw err;
+                          }
+                      }
+                      try {
+                          await client.send(new AdminAddUserToGroupCommand({
+                              GroupName: groupName,
+                              UserPoolId: userPoolId,
+                              Username: username
+                          }));
+                      } catch (err) {
+                          // Already-in-group is fine; user-not-found surfaces.
+                          if (err.name !== 'ResourceConflictException') throw err;
+                      }
+                  } else if (level === 'admin') {
+                      // Never touch admin — it's MyBosun-owned and granted via UI.
+                      continue;
+                  } else {
+                      // Remove user from the other WC-controlled level so only
+                      // one of {member, suspended} is set at a time.
+                      try {
+                          await client.send(new AdminRemoveUserFromGroupCommand({
+                              GroupName: groupName,
+                              UserPoolId: userPoolId,
+                              Username: username
+                          }));
+                      } catch (err) {
+                          // Not in group / group not present — ignore.
+                          if (err.name !== 'ResourceNotFoundException' && err.name !== 'UserNotFoundException') {
+                              throw err;
+                          }
+                      }
+                  }
+              }
+          }
+
+          async function upsertTenantMembership(userId, tenantId, status, newUserDefaults) {
+              if (!TENANT_MEMBERSHIPS_TABLE) {
+                  console.warn('TENANT_MEMBERSHIPS_TABLE not set — skipping membership upsert');
+                  return;
+              }
+              const timestamp = new Date().toISOString();
+
+              // Try insert with attribute_not_exists guard. If the row exists we
+              // fall through to a status-only update so MyBosun-owned roles are
+              // preserved.
+              try {
+                  await ddb.send(new PutCommand({
+                      TableName: TENANT_MEMBERSHIPS_TABLE,
+                      Item: {
+                          userId,
+                          tenantId,
+                          roles: (newUserDefaults && newUserDefaults.tenantRoles) || [],
+                          featureRoles: (newUserDefaults && newUserDefaults.featureRoles) || [],
+                          status,
+                          source: 'wp-sync',
+                          createdAt: timestamp,
+                          updatedAt: timestamp
+                      },
+                      ConditionExpression: 'attribute_not_exists(userId) AND attribute_not_exists(tenantId)'
+                  }));
+                  console.log(`Created TenantMembership ${userId}/${tenantId} with status=${status}`);
+                  return;
+              } catch (err) {
+                  if (err.name !== 'ConditionalCheckFailedException') throw err;
+              }
+
+              await ddb.send(new UpdateCommand({
+                  TableName: TENANT_MEMBERSHIPS_TABLE,
+                  Key: { userId, tenantId },
+                  UpdateExpression: 'SET #status = :status, updatedAt = :updatedAt',
+                  ExpressionAttributeNames: { '#status': 'status' },
+                  ExpressionAttributeValues: { ':status': status, ':updatedAt': timestamp }
+              }));
+              console.log(`Updated TenantMembership ${userId}/${tenantId} status=${status}`);
+          }
+
+          async function deleteTenantMembership(userId, tenantId) {
+              if (!TENANT_MEMBERSHIPS_TABLE) return;
+              const timestamp = new Date().toISOString();
+              // Soft-delete: set status SUSPENDED rather than removing the row,
+              // so MyBosun-owned role state survives a WP user removal.
+              try {
+                  await ddb.send(new UpdateCommand({
+                      TableName: TENANT_MEMBERSHIPS_TABLE,
+                      Key: { userId, tenantId },
+                      UpdateExpression: 'SET #status = :status, updatedAt = :updatedAt',
+                      ConditionExpression: 'attribute_exists(userId)',
+                      ExpressionAttributeNames: { '#status': 'status' },
+                      ExpressionAttributeValues: { ':status': 'SUSPENDED', ':updatedAt': timestamp }
+                  }));
+                  console.log(`Soft-deleted TenantMembership ${userId}/${tenantId} (status=SUSPENDED)`);
+              } catch (err) {
+                  if (err.name !== 'ConditionalCheckFailedException') throw err;
+                  console.log(`No TenantMembership for ${userId}/${tenantId} to soft-delete`);
+              }
+          }
+
+          async function findStudentProfile(userId, tenantId) {
+              if (!STUDENT_PROFILES_TABLE) return null;
+              const { Items = [] } = await ddb.send(new QueryCommand({
+                  TableName: STUDENT_PROFILES_TABLE,
+                  IndexName: 'UserIndex',
+                  KeyConditionExpression: 'userId = :userId',
+                  FilterExpression: 'tenantId = :tenantId',
+                  ExpressionAttributeValues: {
+                      ':userId': userId,
+                      ':tenantId': tenantId
+                  }
+              }));
+              return Items[0] || null;
+          }
+
+          async function mirrorStudentProfile(userId, tenantId, status, newUserDefaults) {
+              const profile = await findStudentProfile(userId, tenantId);
+              if (!profile) {
+                  // Post-auth Lambda is responsible for first-time StudentProfile
+                  // creation — sync Lambda only mirrors changes to existing rows.
+                  console.log(`No StudentProfile for ${userId}/${tenantId} — skipping mirror (post-auth Lambda will create on first login)`);
+                  return;
+              }
+              const approles = [
+                  ...((newUserDefaults && newUserDefaults.tenantRoles) || []),
+                  ...((newUserDefaults && newUserDefaults.featureRoles) || [])
+              ];
+              const mirrorStatus = status === 'SUSPENDED' ? 'Inactive' : 'Active';
+              await ddb.send(new UpdateCommand({
+                  TableName: STUDENT_PROFILES_TABLE,
+                  Key: { studentId: profile.studentId },
+                  UpdateExpression: 'SET #status = :status, approles = :approles, updatedAt = :updatedAt',
+                  ExpressionAttributeNames: { '#status': 'status' },
+                  ExpressionAttributeValues: {
+                      ':status': mirrorStatus,
+                      ':approles': approles,
+                      ':updatedAt': new Date().toISOString()
+                  }
+              }));
+              console.log(`Mirrored StudentProfile ${profile.studentId} for ${userId}/${tenantId}: status=${mirrorStatus}, approles=${approles.length}`);
+          }
+
+          async function applyTenantSync(userPoolId, tenantId, user, cognitoSub) {
+              const wpSync = await getWpSyncConfig(tenantId);
+              if (!wpSync || wpSync.isActive === false) {
+                  console.log(`tenant ${tenantId} wpSync inactive or missing — skipping tenant sync`);
+                  return;
+              }
+
+              const accessLevel = deriveAccessLevel(user.wp_roles || [], wpSync.accessLevelMap);
+              const status = accessLevel === 'suspended' ? 'SUSPENDED' : 'ACTIVE';
+
+              await reconcileTenantGroups(userPoolId, user.email, tenantId, accessLevel);
+              await upsertTenantMembership(cognitoSub, tenantId, status, wpSync.newUserDefaults);
+              await mirrorStudentProfile(cognitoSub, tenantId, status, wpSync.newUserDefaults);
+          }
+
+          async function applyTenantUnsync(userPoolId, tenantId, user, cognitoSub) {
+              // WP user deletion ⇒ revoke MyBosun access for *this tenant only*.
+              try {
+                  for (const level of ['member', 'suspended']) {
+                      try {
+                          await client.send(new AdminRemoveUserFromGroupCommand({
+                              GroupName: `MyBosun_${tenantId}_${level}`,
+                              UserPoolId: userPoolId,
+                              Username: user.email
+                          }));
+                      } catch (err) {
+                          if (err.name !== 'ResourceNotFoundException' && err.name !== 'UserNotFoundException') throw err;
+                      }
+                  }
+              } catch (err) {
+                  console.error('Tenant group cleanup failed:', err);
+              }
+              await deleteTenantMembership(cognitoSub, tenantId);
+              await mirrorStudentProfile(cognitoSub, tenantId, 'SUSPENDED', null);
+          }
+
+          // Fans a batch of up to MAX_BULK_BATCH user payloads onto SQS using
+          // SendMessageBatch (10 per SDK call). Returns counts so the WP-side
+          // bulk runner can track progress and resume on failure.
+          async function handleBulkSyncEnqueue(body) {
+              if (!SYNC_QUEUE_URL) {
+                  throw new Error('SYNC_QUEUE_URL environment variable is required');
+              }
+              if (!body.tenantId) {
+                  throw new Error('tenantId is required for bulk_sync_enqueue');
+              }
+              if (!Array.isArray(body.users) || body.users.length === 0) {
+                  throw new Error('users array is required and must not be empty');
+              }
+              if (body.users.length > MAX_BULK_BATCH) {
+                  const err = new Error(`users array exceeds maximum of ${MAX_BULK_BATCH}`);
+                  err.statusCode = 413;
+                  throw err;
+              }
+
+              const enqueued = [];
+              const failed = [];
+              for (let i = 0; i < body.users.length; i += SQS_BATCH_SIZE) {
+                  const slice = body.users.slice(i, i + SQS_BATCH_SIZE);
+                  const entries = slice.map((user, idx) => ({
+                      Id: String(i + idx),
+                      MessageBody: JSON.stringify({
+                          action: user.action || 'update',
+                          tenantId: body.tenantId,
+                          user: { ...user, tenantId: body.tenantId }
+                      })
+                  }));
+                  const result = await sqs.send(new SendMessageBatchCommand({
+                      QueueUrl: SYNC_QUEUE_URL,
+                      Entries: entries
+                  }));
+                  if (Array.isArray(result.Successful)) {
+                      enqueued.push(...result.Successful.map(s => s.Id));
+                  }
+                  if (Array.isArray(result.Failed)) {
+                      failed.push(...result.Failed.map(f => ({ id: f.Id, code: f.Code, message: f.Message })));
+                  }
+              }
+
+              return {
+                  enqueuedCount: enqueued.length,
+                  failedCount: failed.length,
+                  failed: failed
+              };
+          }
+
+          // Looks up Cognito subs by email for a batch of WP users. Used by the
+          // plugin to backfill cognito_user_id meta after bulk sync, since the
+          // async SQS path never returns the sub back to WP. AdminGetUser uses
+          // email as Username (matches createUser) and has a 5 TPS soft limit
+          // per user pool — we process serially in small batches to stay well
+          // under that without needing backoff logic.
+          const RESOLVE_SUBS_MAX_BATCH = 100;
+          async function handleResolveSubs(userPoolId, body) {
+              const lookups = Array.isArray(body.lookups) ? body.lookups : [];
+              if (lookups.length === 0) {
+                  return { mappings: {}, notFound: [], errored: [] };
+              }
+              if (lookups.length > RESOLVE_SUBS_MAX_BATCH) {
+                  const err = new Error(`lookups exceeds maximum of ${RESOLVE_SUBS_MAX_BATCH}`);
+                  err.statusCode = 413;
+                  throw err;
+              }
+              const mappings = {};
+              const notFound = [];
+              const errored = [];
+              for (const lookup of lookups) {
+                  const wpUserId = lookup && lookup.wp_user_id;
+                  const email = lookup && lookup.email;
+                  if (!wpUserId || !email) {
+                      errored.push({ wp_user_id: wpUserId || null, email: email || null, reason: 'missing wp_user_id or email' });
+                      continue;
+                  }
+                  try {
+                      const got = await client.send(new AdminGetUserCommand({
+                          UserPoolId: userPoolId,
+                          Username: email
+                      }));
+                      const subAttr = (got.UserAttributes || []).find(a => a.Name === 'sub');
+                      const sub = (subAttr && subAttr.Value) || got.Username;
+                      if (sub) {
+                          mappings[wpUserId] = sub;
+                      } else {
+                          errored.push({ wp_user_id: wpUserId, email, reason: 'no sub on user' });
+                      }
+                  } catch (err) {
+                      if (err.name === 'UserNotFoundException') {
+                          notFound.push(wpUserId);
+                          continue;
+                      }
+                      console.error(`resolve_subs error for ${email}:`, err);
+                      errored.push({ wp_user_id: wpUserId, email, reason: err.name || err.message });
+                  }
+              }
+              return {
+                  mappings,
+                  notFound,
+                  errored,
+                  requested: lookups.length,
+                  resolved: Object.keys(mappings).length
+              };
+          }
+
           async function handleGroupCreate(userPoolId, group) {
               if (!group.name) {
                   throw new Error('Group name is required');
@@ -348,11 +923,28 @@ Resources:
                       throw error;
                   }
               }
-              // If we don't have a Cognito ID, create a new user
-              console.log('No Cognito ID provided, creating new user');
-              const createResult = await createUser(userPoolId, user);
-              console.log('No-Cognito-ID createUser result:', JSON.stringify(createResult, null, 2));
-              return createResult;
+              // No Cognito ID was passed. The v3.0 async sync path never hands
+              // the sub back to WP, so every update after the initial create
+              // arrives here. Resolve by email first so we don't loop into
+              // createUser and hit UsernameExistsException.
+              try {
+                  const got = await client.send(new AdminGetUserCommand({
+                      UserPoolId: userPoolId,
+                      Username: user.email
+                  }));
+                  const subAttr = (got.UserAttributes || []).find(a => a.Name === 'sub');
+                  const resolvedSub = (subAttr && subAttr.Value) || got.Username;
+                  console.log(`Resolved Cognito sub by email for update: ${user.email} -> ${resolvedSub}`);
+                  return await updateUser(userPoolId, { ...user, cognito_user_id: resolvedSub });
+              } catch (err) {
+                  if (err.name !== 'UserNotFoundException') {
+                      throw err;
+                  }
+                  console.log('No existing Cognito user for email, creating new user');
+                  const createResult = await createUser(userPoolId, user);
+                  console.log('No-Cognito-ID createUser result:', JSON.stringify(createResult, null, 2));
+                  return createResult;
+              }
           }
           async function deleteUser(userPoolId, user) {
               if (!user.cognito_user_id) {
@@ -413,6 +1005,10 @@ Resources:
       Environment:
         Variables:
           USER_POOL_ID: !Ref CognitoUserPoolId
+          SYNC_QUEUE_URL: !Ref SyncQueue
+          TENANT_CONFIG_TABLE: !Ref TenantConfigTableName
+          TENANT_MEMBERSHIPS_TABLE: !Ref TenantMembershipsTableName
+          STUDENT_PROFILES_TABLE: !Ref StudentProfileTableName
 
   # Lambda Execution Role
   LambdaExecutionRole:
@@ -447,6 +1043,62 @@ Resources:
                   - cognito-idp:AdminRemoveUserFromGroup
                   - cognito-idp:AdminGetUser
                 Resource: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}
+        - PolicyName: SyncQueueAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Producer side — bulk_sync_enqueue fans payloads onto the queue.
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:SendMessageBatch
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt SyncQueue.Arn
+              # Consumer side — EventSourceMapping pulls and acks messages.
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource: !GetAtt SyncQueue.Arn
+        # Cross-stack DDB access for tenant-aware mirroring. Tables live in the
+        # MyBosun yacht-charter-app stack / Terraform tenants module.
+        - PolicyName: MyBosunTenantTablesAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TenantConfigTableName}
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TenantMembershipsTableName}
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${StudentProfileTableName}
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${StudentProfileTableName}/index/*
+              # CMK access for the MyBosun-owned customer-managed key that
+              # encrypts the tenant tables above. Required because DDB
+              # transparent decryption is performed using the caller's
+              # credentials, not the table's. DescribeKey is needed by the
+              # SDK to validate the key before issuing crypto operations.
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:GenerateDataKey
+                  - kms:DescribeKey
+                Resource: !Ref MyBosunDynamoDBKMSKeyArn
 
   # API Gateway REST API
   ApiGateway:
@@ -602,3 +1254,15 @@ Outputs:
     Description: API Key (use 'aws apigateway get-api-key --api-key [key-id]
       --include-value' to get the value)
     Value: !Ref ApiKey
+
+  SyncQueueUrl:
+    Description: URL of the SQS queue buffering bulk sync jobs
+    Value: !Ref SyncQueue
+
+  SyncQueueArn:
+    Description: ARN of the SQS queue (for cross-stack monitoring)
+    Value: !GetAtt SyncQueue.Arn
+
+  SyncDLQUrl:
+    Description: URL of the dead-letter queue. Monitor depth in CloudWatch.
+    Value: !Ref SyncDLQ

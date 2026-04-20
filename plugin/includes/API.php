@@ -59,21 +59,36 @@ class API {
 	/**
 	 * Send data to AWS Lambda function
 	 *
+	 * Injects the configured tenant_id into the top-level payload and into
+	 * any nested `user` object so the Lambda can route the request correctly.
+	 *
 	 * @param string $action Action to perform.
 	 * @param array  $data   Data to send.
 	 * @return array API response.
 	 */
 	private function send_to_lambda( $action, $data ) {
-		$this->log_message( "Sending request to Lambda: {$action} - " . json_encode( $data ) );
+		$tenant_id = User_Data::get_tenant_id();
 
-		$response = $this->send_api_request(
-			array(
-				'action' => $action,
-				...$data,
-			)
+		if ( empty( $tenant_id ) ) {
+			$this->log_message( 'Sync aborted: tenant ID is not configured (Sync Settings → Tenant ID).', 'error' );
+			return false;
+		}
+
+		$payload = array(
+			'action'   => $action,
+			'tenantId' => $tenant_id,
 		);
 
-		return $response;
+		foreach ( $data as $key => $value ) {
+			if ( $key === 'user' && is_array( $value ) && empty( $value['tenantId'] ) ) {
+				$value['tenantId'] = $tenant_id;
+			}
+			$payload[ $key ] = $value;
+		}
+
+		$this->log_message( "Sending request to Lambda: {$action} - " . wp_json_encode( $payload ) );
+
+		return $this->send_api_request( $payload );
 	}
 
 	/**
@@ -119,7 +134,11 @@ class API {
 		$body      = wp_remote_retrieve_body( $response );
 		$http_code = wp_remote_retrieve_response_code( $response );
 
-		if ( $http_code !== 200 ) {
+		// Accept any 2xx as success. The bulk_sync_enqueue path returns 202
+		// (Accepted) because the actual Cognito work happens asynchronously
+		// off the SQS queue; treating that as a failure made every successful
+		// bulk run report "all failed" in the admin notice.
+		if ( $http_code < 200 || $http_code >= 300 ) {
 			$this->log_message( "API error: Status {$http_code} - {$body}", 'error' );
 			return false;
 		}
@@ -209,12 +228,16 @@ class API {
 
 		$result = $this->send_to_lambda( 'update', array( 'user' => $user_data ) );
 
-		// Handle case where Lambda falls back to creating a new user (when original Cognito user was deleted)
-		// Extract and store the new Cognito User ID if present in response.
+		// Persist the resolved Cognito sub returned by the Lambda. v3.0 always
+		// surfaces it under result.User.Attributes (sub) so this same block
+		// handles both the create-fallback path (Lambda actually created a new
+		// user) and the normal update path (Lambda resolved an existing sub).
+		// Comparing against stored meta — not against the request payload —
+		// also self-heals legacy records that had the email written in as the
+		// "sub" by older Lambda versions.
 		if ( $result && isset( $result['result']['User'] ) && isset( $user_data['wp_user_id'] ) ) {
 			$new_cognito_user_id = null;
 
-			// Try to get sub from User attributes (most reliable)
 			if ( isset( $result['result']['User']['Attributes'] ) ) {
 				foreach ( $result['result']['User']['Attributes'] as $attr ) {
 					if ( $attr['Name'] === 'sub' ) {
@@ -224,15 +247,16 @@ class API {
 				}
 			}
 
-			// Fallback to Username if sub not found.
 			if ( ! $new_cognito_user_id && isset( $result['result']['User']['Username'] ) ) {
 				$new_cognito_user_id = $result['result']['User']['Username'];
 			}
 
-			// Update metadata if we got a new ID and it's different from what we had.
-			if ( $new_cognito_user_id && isset( $user_data['cognito_user_id'] ) && $new_cognito_user_id !== $user_data['cognito_user_id'] ) {
-				update_user_meta( $user_data['wp_user_id'], 'cognito_user_id', $new_cognito_user_id );
-				$this->log_message( "Lambda created new user - Updated cognito_user_id from {$user_data['cognito_user_id']} to {$new_cognito_user_id} for WordPress user: {$user_data['wp_user_id']}" );
+			if ( $new_cognito_user_id ) {
+				$existing = get_user_meta( $user_data['wp_user_id'], 'cognito_user_id', true );
+				if ( $new_cognito_user_id !== $existing ) {
+					update_user_meta( $user_data['wp_user_id'], 'cognito_user_id', $new_cognito_user_id );
+					$this->log_message( "Updated cognito_user_id for WordPress user {$user_data['wp_user_id']}: '{$existing}' -> '{$new_cognito_user_id}'" );
+				}
 			}
 		}
 
@@ -251,47 +275,74 @@ class API {
 	}
 
 	/**
-	 * Create group in Cognito
+	 * Resolve Cognito subs for a batch of WordPress users.
 	 *
-	 * @param string $group_name  Group name.
-	 * @param string $description Group description.
-	 * @return array Creation result.
+	 * Used to backfill `cognito_user_id` user meta after bulk sync — the async
+	 * SQS path never returns the sub to WordPress, so we have to ask for it
+	 * after the consumer Lambda has created the Cognito records. Lambda caps
+	 * the batch at 100; we also enforce the cap here so callers can't blow
+	 * through the 15s wp_remote_post timeout.
+	 *
+	 * @param array $lookups Array of [ 'wp_user_id' => int, 'email' => string ].
+	 * @return array|false { mappings: { wp_user_id: sub }, notFound: [], errored: [] } or false on transport failure.
 	 */
-	public function create_group( $group_name, $description = '' ) {
-		$this->log_message( "Creating group in Cognito: WP_{$group_name}" );
+	public function resolve_subs( $lookups ) {
+		if ( empty( $lookups ) ) {
+			return array(
+				'mappings'  => array(),
+				'notFound'  => array(),
+				'errored'   => array(),
+				'requested' => 0,
+				'resolved'  => 0,
+			);
+		}
 
-		return $this->send_api_request(
-			array(
-				'action' => 'create_group',
-				'group'  => array(
-					'name'        => "WP_{$group_name}",
-					'description' => $description ?: "WordPress role: {$group_name}",
-				),
-			)
-		);
+		$count = count( $lookups );
+		if ( $count > 100 ) {
+			$this->log_message( "resolve_subs called with {$count} lookups — capping at 100", 'warning' );
+			$lookups = array_slice( $lookups, 0, 100 );
+		}
+
+		$response = $this->send_to_lambda( 'resolve_subs', array( 'lookups' => array_values( $lookups ) ) );
+		if ( ! is_array( $response ) || ! isset( $response['result'] ) ) {
+			return false;
+		}
+		return $response['result'];
 	}
 
 	/**
-	 * Update user group membership in Cognito
+	 * Enqueue a batch of users for asynchronous sync via SQS.
 	 *
-	 * @param string $cognito_user_id Cognito user ID.
-	 * @param string $group_name      Group name.
-	 * @param string $operation       Operation (add/remove).
-	 * @return bool Success status.
+	 * The Lambda fans the batch out to its SQS queue (one message per user) and
+	 * returns immediately with `{ enqueuedCount, failedCount, failed }`. This
+	 * keeps WordPress's 15s `wp_remote_post` window safe even for large bulk
+	 * runs because the actual Cognito work happens asynchronously.
+	 *
+	 * @param array $users_batch Array of canonical User_Data payloads (max 25).
+	 * @return array|false API response or false on failure.
 	 */
-	public function update_group_membership( $cognito_user_id, $group_name, $operation = 'add' ) {
-		$this->log_message( "Syncing group membership for user {$cognito_user_id} in group WP_{$group_name}: {$operation}" );
+	public function bulk_sync_enqueue( $users_batch ) {
+		if ( empty( $users_batch ) ) {
+			return array(
+				'enqueuedCount' => 0,
+				'failedCount'   => 0,
+				'failed'        => array(),
+			);
+		}
 
-		return $this->send_api_request(
-			array(
-				'action' => 'update_group_membership',
-				'group'  => array(
-					'name'      => "WP_{$group_name}",
-					'user_id'   => $cognito_user_id,
-					'operation' => $operation,
-				),
-			)
-		);
+		$count = count( $users_batch );
+		$this->log_message( "Enqueuing batch of {$count} user(s) for async sync" );
+
+		$response = $this->send_to_lambda( 'bulk_sync_enqueue', array( 'users' => $users_batch ) );
+
+		// The Lambda response shape is {message: 'Accepted', result: {enqueuedCount, failedCount, failed}}.
+		// Unwrap the envelope so callers see a flat result regardless of whether
+		// the server ever changes the wrapper convention.
+		if ( is_array( $response ) && isset( $response['result'] ) && is_array( $response['result'] ) ) {
+			return $response['result'];
+		}
+
+		return $response;
 	}
 
 	/**
@@ -654,144 +705,6 @@ class API {
 									$results['tests']['connectivity']['success'];
 
 		return $results;
-	}
-
-	/**
-	 * Bulk synchronize users to Cognito
-	 *
-	 * @param int $limit  Maximum number of users to sync.
-	 * @param int $offset Starting offset for user query.
-	 * @return array Sync results.
-	 */
-	public function bulk_sync_users( $limit = 20, $offset = 0 ) {
-		$users = get_users(
-			array(
-				'number' => $limit,
-				'offset' => $offset,
-				'fields' => 'all',
-			)
-		);
-
-		return $this->process_users_for_sync( $users );
-	}
-
-	/**
-	 * Bulk synchronize users by role to Cognito
-	 *
-	 * @param string $role WordPress role to sync.
-	 * @return array Sync results.
-	 */
-	public function bulk_sync_users_by_role( $role ) {
-		$users = get_users(
-			array(
-				'role'   => $role,
-				'fields' => 'all',
-			)
-		);
-
-		$this->log_message( sprintf( 'Starting bulk sync for role: %s. Found %d users.', $role, count( $users ) ) );
-
-		return $this->process_users_for_sync( $users );
-	}
-
-	/**
-	 * Process array of users for synchronization
-	 *
-	 * @param array $users Array of WP_User objects to process.
-	 * @return array Processing results.
-	 */
-	private function process_users_for_sync( $users ) {
-		$stats = array(
-			'processed' => 0,
-			'created'   => 0,
-			'updated'   => 0,
-			'failed'    => 0,
-			'errors'    => array(),
-		);
-
-		foreach ( $users as $user ) {
-			++$stats['processed'];
-
-			try {
-				$cognito_id = get_user_meta( $user->ID, 'cognito_user_id', true );
-				$user_data  = $this->prepare_user_data( $user->ID, $user );
-
-				if ( empty( $cognito_id ) ) {
-					$result = $this->create_user( $user_data );
-					if ( $result ) {
-						++$stats['created'];
-					} else {
-						++$stats['failed'];
-					}
-				} else {
-					// Normal update operation.
-					$user_data['cognito_user_id'] = $cognito_id;
-					$result                       = $this->update_user( $user_data );
-					if ( $result ) {
-						++$stats['updated'];
-					} else {
-						++$stats['failed'];
-					}
-				}
-			} catch ( \Exception $e ) {
-				++$stats['failed'];
-				$stats['errors'][] = sprintf(
-					'Error processing user %s (%d): %s',
-					$user->user_email,
-					$user->ID,
-					$e->getMessage()
-				);
-				$this->log_message(
-					sprintf(
-						'Failed to sync user %s (%d): %s',
-						$user->user_email,
-						$user->ID,
-						$e->getMessage()
-					),
-					'error'
-				);
-			}
-		}
-
-		$this->log_message(
-			sprintf(
-				'Bulk sync completed. Processed: %d, Created: %d, Updated: %d, Failed: %d',
-				$stats['processed'],
-				$stats['created'],
-				$stats['updated'],
-				$stats['failed']
-			)
-		);
-
-		return $stats;
-	}
-
-	/**
-	 * Prepare user data for API synchronization
-	 *
-	 * @param int     $user_id WordPress user ID.
-	 * @param WP_User $user    WordPress user object.
-	 * @return array Formatted user data.
-	 */
-	private function prepare_user_data( $user_id, $user ) {
-		$first_name = get_user_meta( $user_id, 'first_name', true );
-		$last_name  = get_user_meta( $user_id, 'last_name', true );
-
-		$full_name = trim( $first_name . ' ' . $last_name );
-		if ( empty( $full_name ) ) {
-			$full_name = $user->display_name ?: $user->user_login;
-		}
-
-		return array(
-			'wp_user_id'        => $user_id,
-			'email'             => $user->user_email,
-			'username'          => $user->user_login,
-			'firstName'         => $first_name,
-			'lastName'          => $last_name,
-			'name'              => $full_name,
-			'wp_memberrank'     => get_user_meta( $user_id, 'wpuef_cid_c6', true ),
-			'wp_membercategory' => get_user_meta( $user_id, 'wpuef_cid_c10', true ),
-		);
 	}
 
 	/**

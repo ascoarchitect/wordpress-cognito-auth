@@ -1,82 +1,86 @@
-# WordPress Cognito Auth - Architecture Overview
+# WordPress Cognito Auth — Architecture (v3.0)
 
-## Data Mastering Configuration
+> The canonical, end-to-end data-flow doc (with before/after diagrams and the
+> full ownership boundaries table) lives in the MyBosun repo:
+> `yacht-charter-app/documentation/WP_COGNITO_SYNC_V3.md`. This file is the
+> WordPress-side companion.
 
-The plugin now supports configurable data mastering to optimize sync performance and avoid circular dependencies.
+## What changed in v3.0
 
-### Configuration Options
+The plugin became a **dumb pipe**. It no longer reasons about Cognito groups,
+membership levels, or role priorities — every event simply pushes the user's
+canonical payload (tenant ID, WP user ID, email, name, full `wp_roles[]`,
+optional extras) to the sync Lambda. The Lambda is now the single source of
+truth for:
 
-**WordPress Masters User Data (Default)**
-- WordPress is the authoritative source for user profile data
-- Changes to names, email, custom fields are synced TO Cognito via existing hooks
-- During authentication, only `cognito_groups` metadata is updated from Cognito
-- Minimal API overhead during login
+- Cognito group reconciliation (`MyBosun_{tenantId}_{admin|member|suspended}`)
+- TenantMemberships upsert (status from WC; tenantRoles/featureRoles owned by
+  MyBosun and set on create only)
+- StudentProfile mirroring (status + approles)
 
-**Cognito Masters User Data** 
-- Cognito is the authoritative source for user profile data
-- Changes to profile data are synced FROM Cognito during login
-- WordPress profile updates should be disabled or restricted
+This collapses the v2.x "N API calls per role change" problem to a single
+push, eliminates the in-plugin role-priority map, and makes the whole flow
+multi-tenant safe — the same WP install can serve a different tenant just by
+changing the configured Tenant ID.
 
-## Current Implementation
+## Direction
 
-### Authentication Flow
-1. User authenticates via Cognito OAuth2/OIDC
-2. JWT token is validated and decoded
-3. WordPress user is created/updated based on data mastering configuration:
-   - **WordPress Master**: Only `cognito_groups` metadata updated
-   - **Cognito Master**: Full profile sync (names, display name, custom attributes)
-4. User is logged into WordPress
+One-way: **WooCommerce Memberships → MyBosun**, for the fields WC owns
+(access level, membership status). MyBosun-owned fields (admin grants, tenant
+roles, feature roles) are never touched by inbound sync. There are no
+outbound MyBosun → WP calls; just-in-time freshness on login is handled by
+the post-auth Lambda reading TenantMemberships, not by pinging WP.
 
-### Sync Architecture
-- **WordPress → Cognito**: Triggered by WordPress hooks (profile_update, role changes)
-- **Cognito → WordPress**: Currently during authentication only
-- **Conflict Prevention**: Transient flags prevent circular sync during authentication
+A future iteration may flip ownership (MyBosun becomes membership master, WP
+becomes the consumer). When that lands, the dropped `wpEndpointUrl` /
+`wpApiKeyParam` config fields will be reintroduced. They are deliberately
+absent from v3.0 to avoid carrying dead config.
 
-## Future Enhancements
+## WordPress-side responsibilities (v3.0)
 
-### Webhook-Based Sync (Recommended for Cognito Master Mode)
+| Concern | v2.x | v3.0 |
+|---|---|---|
+| Authentication (OIDC/JWT) | Plugin | Plugin (unchanged) |
+| WP user create / update / delete sync | Plugin → Lambda | Plugin → Lambda (now with `tenantId`) |
+| Role → Cognito group mapping | Hardcoded `WP_{role}` in plugin | `accessLevelMap` per tenant in TenantConfig |
+| Group creation in Cognito | Plugin (`create_group` action) | Lambda (on demand) |
+| Group membership reconciliation | Plugin (one call per role) | Lambda (one call per user) |
+| Bulk sync transport | `wp_remote_post` per user (15s timeout risk) | SQS-buffered via `bulk_sync_enqueue` |
+| Tenant ID | n/a (single-tenant) | Required on every payload |
 
-**Benefits:**
-- Eliminates API overhead during login
-- Real-time sync when Cognito data changes
-- Improved login performance
-- Decouples authentication from data synchronization
+## Files of note
 
-**Implementation Plan:**
-1. Create AWS Lambda function to handle Cognito user pool events
-2. Lambda triggers WordPress webhook endpoint when user data changes
-3. Remove login-time sync for Cognito master mode
-4. Add webhook endpoint in WordPress to receive and process updates
+- `includes/User_Data.php` — canonical payload builder (`tenantId`,
+  `wp_user_id`, `email`, `name`, `wp_roles`, `extra`). One place defines the
+  contract; everything else delegates.
+- `includes/API.php` — HTTP wrapper. `send_to_lambda()` injects `tenantId`
+  and aborts if it isn't configured. Adds `bulk_sync_enqueue($users_batch)`
+  for the SQS path.
+- `includes/Sync.php` — event hooks (`profile_update`, role changes) and
+  `bulk_sync_users($role)` runner. Bulk runner paginates in 25-user batches
+  and persists a resume offset transient so an interrupted run continues from
+  where it stopped.
+- `includes/Admin.php` — Sync Settings → Tenant ID input, bulk-sync UI with
+  "restart from beginning" toggle and resume-offset display.
 
-**Lambda Trigger Events:**
-- User attribute updates in Cognito
-- User status changes (enabled/disabled)
-- Custom attribute modifications
+## What this plugin no longer does
 
-**WordPress Webhook Endpoint:**
-- Authenticate requests from Lambda (HMAC signature)
-- Update user profile data based on received payload
-- Log sync activities for debugging
+- Manages Cognito groups directly (`create_group`, `update_group_membership`
+  actions are no-ops on the v3 Lambda — kept only to avoid 5xx during a
+  rolling plugin upgrade).
+- Owns the role → group mapping. The mapping is per-tenant config in
+  TenantConfig, because different WP installs use different role slugs
+  (`wpuef_member` vs `wc_subscriber` vs custom membership plugins).
+- Maintains `cognito_groups` user meta as a sync target. Group state lives in
+  Cognito; WP no longer mirrors it.
 
-### Configuration Migration
+## Performance / scale
 
-When webhook functionality is implemented:
-- Add new feature flag: `cognito_webhook_sync`
-- Deprecate login-time sync for Cognito master mode
-- Provide migration tools for existing installations
-
-## Current Files Modified
-
-- `Auth.php`: Added configurable data mastering in `update_user_from_cognito()`
-- `Admin.php`: Added UI for data mastering configuration
-- `Sync.php`: Enhanced documentation and architecture comments
-
-## Performance Impact
-
-**WordPress Master Mode (Current Default):**
-- Minimal login overhead (only cognito_groups update)
-- Existing hook-based sync maintains data consistency
-
-**Cognito Master Mode (Current):**
-- Higher login overhead due to profile data sync
-- Future webhook implementation will eliminate this overhead
+- Bulk sync of 800+ users: WP enqueues in batches of 25, four batches per
+  admin click (≈100 users/tick), saved offset for resumability. The sync
+  Lambda fans onto SQS via `SendMessageBatch` (10 messages/call). The SQS
+  consumer runs at `ReservedConcurrentExecutions: 5` (~10–15 RPS — under
+  Cognito's ~25 RPS admin-API limit). End-to-end estimate for 800 users:
+  ~55s once enqueued.
+- Failed messages retry twice (`maxReceiveCount: 3`), then land in the
+  dead-letter queue for manual redrive after fixing root cause.

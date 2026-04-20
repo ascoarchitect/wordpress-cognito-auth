@@ -2,6 +2,36 @@
 
 A comprehensive, production-ready WordPress plugin that integrates Amazon Cognito authentication with user synchronization and content restriction capabilities.
 
+## Version 3.0 — Tenant-aware sync (current)
+
+> **Read this before relying on anything below.** v3.0 is a substantive
+> rewrite of the sync layer. The plugin is now a **dumb pipe**: each event
+> sends one payload (with `tenantId` + full `wp_roles[]`) to the sync
+> Lambda, which owns Cognito group reconciliation, TenantMemberships
+> upserts, and StudentProfile mirroring. See `ARCHITECTURE.md` for the
+> WordPress-side overview, and `yacht-charter-app/documentation/WP_COGNITO_SYNC_V3.md`
+> for the full end-to-end data flow with diagrams.
+
+**What changed:**
+
+- **Sync Settings → Tenant ID** is required. Without it, every sync push is
+  aborted (logged as an error). Set this on each WordPress install so the
+  Lambda knows which tenant it is.
+- **Bulk sync** now enqueues to SQS. Each click processes ≤ 100 users
+  (4 batches of 25); larger user bases resume from a saved offset on the
+  next click. Designed for 800+ users without hitting the WP 15s timeout
+  or Cognito's ~25 RPS admin-API limit.
+- **Group sync** — the per-role enable/disable UI and the group-creation
+  flow are no-ops in v3.0. Cognito groups (`MyBosun_{tenantId}_{level}`)
+  are created on demand by the sync Lambda, driven by the per-tenant
+  `accessLevelMap` in `TenantConfig.wpSync`.
+- **Sync direction** is one-way (WC → MyBosun) for owned fields. There are
+  no outbound MyBosun → WP calls. This may flip in a future iteration.
+
+The sections below describe the v2.x feature set. Anything related to
+"per-role group sync", "WP_{role} groups", or "bidirectional sync" is
+historical and superseded by the v3.0 model above.
+
 ## 🚀 Features
 
 ### Core Authentication Features
@@ -14,16 +44,26 @@ A comprehensive, production-ready WordPress plugin that integrates Amazon Cognit
 - **Role Mapping**: Map Cognito groups to WordPress roles
 
 ### User Synchronization Features
-- **Bidirectional Sync**: Two-way user data synchronization between Cognito and WordPress
-- **Advanced Group Management**: Comprehensive group synchronization with visual management interface
+- **One-way Sync (v3.0)**: Outbound user data sync from WordPress to the MyBosun
+  Lambda (Cognito + DynamoDB). The "bidirectional" flow described in older
+  versions has been removed; see the v3.0 banner above.
+- **Tenant-aware Group Reconciliation**: Each sync push includes the tenant ID
+  and the user's full WP roles; the Lambda reconciles
+  `MyBosun_{tenantId}_{level}` group membership.
 - **Profile Sync**: Sync user profile information (name, email, custom attributes)
-- **Background Processing**: Bulk sync operations with progress tracking and user selection options
-- **Real-time Updates**: Sync user data on login events
+- **SQS-buffered Bulk Sync**: Bulk operations enqueue users to SQS in batches
+  of 25 with a saved resume offset (designed for 800+ users without timing
+  out the WP request).
+- **Real-time Updates**: Sync user data on profile and role-change events
 
-### Group Management System
+### Group Management System (v2.x — superseded)
+> The visual group-management UI and per-role enable/disable controls below
+> are **no-ops in v3.0**. Cognito groups (`MyBosun_{tenantId}_{level}`) are
+> created on demand by the sync Lambda, driven by the per-tenant
+> `accessLevelMap` in `TenantConfig.wpSync`. The tab still renders for
+> backwards compatibility but its toggles do not affect group creation.
 - **Visual Interface**: Dedicated group management tab with table view of all WordPress roles
 - **Individual Control**: Enable/disable group sync for each WordPress role independently
-- **Automatic Group Creation**: Automatically creates corresponding Cognito groups when sync is enabled
 - **User Count Display**: Shows how many users are in each role for better management
 - **Status Indicators**: Clear visual indicators for enabled/disabled sync state
 - **Bulk Operations**: Test and full sync operations specifically for groups
@@ -600,12 +640,128 @@ wp-cognito-auth/
 
 ## 📝 Changelog
 
+### Version 3.0.5
+- **Sync Lambda — email-based sub resolution on update**: After the v3.0 shift
+  to an asynchronous SQS path, the plugin never receives the Cognito `sub`
+  back from a create, so every subsequent `update` arrives at the Lambda with
+  no `cognito_user_id`. The old fallback path called `createUser` in that
+  case and raised `UsernameExistsException` against the already-created
+  Cognito record, pushing the message through SQS retries into the DLQ.
+  `updateUser` now resolves the sub by `AdminGetUser(Username: email)` first,
+  recurses into the normal update flow, and only falls through to `createUser`
+  on `UserNotFoundException`. Downstream `TenantMemberships` upserts now run
+  consistently on every update, so post-auth role-sync no longer mirrors
+  stale state.
+- **Sync Lambda — new `resolve_subs` action**: Synchronous batch lookup
+  endpoint (`POST /sync` with `action: "resolve_subs"`) that takes up to 100
+  `{ wp_user_id, email }` pairs and returns `{ mappings, notFound, errored }`.
+  Used by the plugin to rebuild `cognito_user_id` user meta after bulk sync,
+  restoring the v2.x local record without reintroducing an outbound call from
+  the Lambda to WordPress.
+- **Plugin — "Backfill Cognito IDs" admin control**: New card on the Bulk
+  Sync tab that walks every WordPress user missing `cognito_user_id` meta,
+  calls `resolve_subs` in 50-user batches, and writes the sub back via
+  `update_user_meta`. Resumable via a transient offset like the bulk sync
+  runner; safe to re-run — only unlinked users are queried.
+
 ### Version 2.3.2
 - **Enhanced Security**: Replaced all `wp_redirect()` calls with `wp_safe_redirect()` for improved security
 - **Allowed Redirect Hosts**: Added Cognito hosted UI domain to WordPress allowed redirect hosts filter
 - **Secure External Redirects**: Maintained functionality for Cognito authentication and logout flows while using secure redirect functions
 - **Code Quality**: Removed outdated comments about using unsafe redirects for external URLs
 - **Security Best Practices**: Now follows WordPress security standards for redirect handling
+
+### Version 3.0.4
+- **Infrastructure — producer/consumer concurrency partitioning**: The sync
+  Lambda is invoked on two paths that previously fought for the same
+  concurrency pool: the API Gateway producer (`bulk_sync_enqueue`) and the
+  SQS trigger (per-message consumer). Under bulk load the consumer would
+  scale up to the full `ReservedConcurrentExecutions`, starve the producer,
+  and API Gateway would return generic `500 "Internal server error"` to the
+  plugin for every batch whose enqueue arrived while the queue was draining.
+  Fixed by raising `ReservedConcurrentExecutions` to 10 and capping the SQS
+  trigger at `ScalingConfig.MaximumConcurrency: 3`, guaranteeing 7 slots for
+  the producer at all times. SQS now does the buffering it was intended to
+  do; the plugin never sees a concurrency-driven 500.
+- **Plugin — removed the pause-on-throttle client logic shipped in 3.0.3**:
+  With the root cause fixed at the infrastructure layer, the
+  `last_error` / transient-status-code classification in `send_api_request`,
+  the `throttled` stats branch in `Sync::bulk_sync_users`, and the
+  exponential-backoff `scheduleThrottleResume` loop in the admin JS are all
+  gone. They papered over the real problem and, in practice, stalled bulk
+  runs in a backoff loop because every tick hit the same starved producer.
+
+### Version 3.0.3
+- **Superseded by 3.0.4.** The pause-on-throttle plugin-side workaround
+  introduced in this release mis-diagnosed the root cause and led to stalled
+  bulk runs under sustained load. All 3.0.3 behaviour has been reverted;
+  3.0.4 fixes the real issue at the infrastructure layer. Do not deploy 3.0.3.
+
+### Version 3.0.2
+- **Bulk sync — JS-driven auto-continuation with progress bar**: Bulk sync no
+  longer requires the admin to re-click the button between batches. The admin
+  page now intercepts the form submit, runs an AJAX tick loop against a new
+  `wp_ajax_cognito_bulk_sync_step` handler, and renders a live progress bar
+  (processed / total, enqueued, failed). Includes a Stop button so the run can
+  be paused and resumed from the saved offset on the next click.
+- **Bulk sync — accept any 2xx response**: `send_api_request` was hardcoded to
+  reject anything other than HTTP 200, causing the SQS-enqueue endpoint's
+  legitimate `202 Accepted` to be reported as "all failing". Relaxed to
+  `>= 200 && < 300`.
+- **Bulk sync — unwrap the Lambda `result` envelope**: `bulk_sync_enqueue` now
+  reads `$response['result']['enqueuedCount']` correctly (previously it looked
+  one level too high and reported zero enqueues even on success).
+
+### Version 3.0.1
+- **Sync Lambda — UUID-validate `cognito_user_id` from WP payload**: the
+  plugin's "create -> already exists -> update" fallback path passes the
+  user's email as `cognito_user_id`. The Lambda used to trust this verbatim
+  and write the email into TenantMembership as the `userId` PK — leaving the
+  post-auth Lambda unable to find the membership at login. Now validates the
+  passed value against the Cognito sub format (UUIDv4) and falls back to
+  `AdminGetUser` when it's not a real sub.
+- **Sync Lambda — return resolved sub on update path**: `AdminUpdateUserAttributes`
+  doesn't return a `User` object, so the WP plugin's existing extractor never
+  saw the sub on update responses and `cognito_user_id` user-meta was never
+  repopulated after an admin clicked "Unlink". Lambda now decorates the
+  response with `result.User.Attributes` containing the resolved sub on both
+  create and update paths.
+- **Plugin — `update_user` self-heals legacy meta**: the previous guard only
+  wrote new meta when the returned sub differed from the request payload's
+  `cognito_user_id`. The check now compares against the **stored** user-meta,
+  so unlink-then-sync repopulates correctly and any legacy record carrying
+  email-as-sub is corrected on the next sync.
+- **Infrastructure — `MyBosunDynamoDBKMSKeyArn` parameter added to the
+  cognito-sync stack**: the Lambda execution role now gets `kms:Decrypt`,
+  `kms:GenerateDataKey`, and `kms:DescribeKey` on the customer-managed CMK
+  encrypting the MyBosun tenant tables. Without this, every TenantMemberships
+  / StudentProfile DDB call fails with `KMS AccessDeniedException`.
+
+### Version 3.0.0
+- **Tenant-aware sync**: Every payload now carries a required `tenantId`. The
+  plugin aborts (with a logged error) if Sync Settings → Tenant ID is empty.
+- **Plugin is a dumb pipe**: Cognito group reconciliation, TenantMemberships
+  upserts, and StudentProfile mirroring all moved to the sync Lambda. The
+  plugin no longer owns `WP_{role}` group naming or per-role group ownership.
+- **One-way sync direction**: WC → MyBosun for owned fields. No outbound
+  MyBosun → WP calls (the dropped `wpEndpointUrl`/`wpApiKeyParam` fields will
+  reappear if/when ownership flips in a future release).
+- **SQS-buffered bulk sync**: Bulk runner paginates in 25-user batches, up to
+  4 batches per click (~100 users), with a saved offset for resumability.
+  Designed for 800+ user installs without hitting WP's 15s timeout or
+  Cognito's ~25 RPS admin-API limit.
+- **Group sync UI is no-op**: The per-role enable/disable toggles still render
+  but no longer drive Cognito group creation. Groups are created on demand by
+  the sync Lambda using `MyBosun_{tenantId}_{admin|member|suspended}`.
+- **Restricted WC → MyBosun ownership**: WC may only set `member` /
+  `suspended`; the `admin` access level is MyBosun-owned and never touched by
+  inbound sync.
+- **Multi-tenant post-auth mirror**: Cognito post-auth Lambda now derives all
+  tenants the user belongs to from group membership and mirrors approles +
+  status into each per-tenant StudentProfile.
+- **Documentation**: `ARCHITECTURE.md` rewritten as the WordPress-side
+  companion to `yacht-charter-app/documentation/WP_COGNITO_SYNC_V3.md`.
+  `GROUP_SYNC_OPTIMIZATION.md` carries a "superseded by v3.0" banner.
 
 ### Version 2.3.1
 - **Enhanced Role Synchronization**: Added immediate synchronization for secondary role changes (add_user_role/remove_user_role hooks)
