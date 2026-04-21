@@ -148,6 +148,11 @@ Resources:
               member: 'member',
               suspended: 'guest'
           };
+          // Baseline feature role — every TenantMembership must carry this so
+          // the authorization layer can rely on featureRoles as the sole source
+          // of truth. Enforced here as a system invariant regardless of the
+          // tenant-level `newUserDefaults.featureRoles` config.
+          const BASELINE_FEATURE_ROLE = 'MyBosunUser';
           exports.handler = async (event) => {
               console.log('Received event:', JSON.stringify(event, null, 2));
               const userPoolId = process.env.USER_POOL_ID;
@@ -466,6 +471,13 @@ Resources:
               // `roles` is seeded empty and the canonical base role is unioned at
               // read time (approles = baseRole ∪ membership.roles ∪ featureRoles).
               // Only `featureRoles` is MyBosun-owned seed data worth persisting.
+              //
+              // BASELINE_FEATURE_ROLE ('MyBosunUser') is always included so every
+              // authenticated user has the baseline app permission — gates self-
+              // profile and documentation access. Tenant-configured defaults are
+              // unioned on top, deduped.
+              const configuredDefaults = (newUserDefaults && newUserDefaults.featureRoles) || [];
+              const seededFeatureRoles = Array.from(new Set([BASELINE_FEATURE_ROLE, ...configuredDefaults]));
               try {
                   await ddb.send(new PutCommand({
                       TableName: TENANT_MEMBERSHIPS_TABLE,
@@ -473,7 +485,7 @@ Resources:
                           userId,
                           tenantId,
                           roles: [],
-                          featureRoles: (newUserDefaults && newUserDefaults.featureRoles) || [],
+                          featureRoles: seededFeatureRoles,
                           status,
                           source: 'wp-sync',
                           createdAt: timestamp,
