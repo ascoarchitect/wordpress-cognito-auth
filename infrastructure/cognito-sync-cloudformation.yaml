@@ -140,6 +140,14 @@ Resources:
           // via the MyBosun UI, never auto-granted from a WP `administrator` role.
           const ALLOWED_WC_ACCESS_LEVELS = ['member', 'suspended'];
           const TENANT_ACCESS_LEVELS = ['admin', 'member', 'suspended'];
+          // Canonical base role per Cognito access level. Must match the
+          // mapping in yacht-charter-app role-sync/lib/constants.js so the
+          // post-auth Lambda and this sync agree on derived approles.
+          const ROLE_BY_LEVEL = {
+              admin: 'admin',
+              member: 'member',
+              suspended: 'guest'
+          };
           exports.handler = async (event) => {
               console.log('Received event:', JSON.stringify(event, null, 2));
               const userPoolId = process.env.USER_POOL_ID;
@@ -453,13 +461,18 @@ Resources:
               // Try insert with attribute_not_exists guard. If the row exists we
               // fall through to a status-only update so MyBosun-owned roles are
               // preserved.
+              //
+              // Tenant role is always derivable from Cognito group membership, so
+              // `roles` is seeded empty and the canonical base role is unioned at
+              // read time (approles = baseRole ∪ membership.roles ∪ featureRoles).
+              // Only `featureRoles` is MyBosun-owned seed data worth persisting.
               try {
                   await ddb.send(new PutCommand({
                       TableName: TENANT_MEMBERSHIPS_TABLE,
                       Item: {
                           userId,
                           tenantId,
-                          roles: (newUserDefaults && newUserDefaults.tenantRoles) || [],
+                          roles: [],
                           featureRoles: (newUserDefaults && newUserDefaults.featureRoles) || [],
                           status,
                           source: 'wp-sync',
@@ -520,7 +533,7 @@ Resources:
               return Items[0] || null;
           }
 
-          async function mirrorStudentProfile(userId, tenantId, status, newUserDefaults) {
+          async function mirrorStudentProfile(userId, tenantId, status, accessLevel) {
               const profile = await findStudentProfile(userId, tenantId);
               if (!profile) {
                   // Post-auth Lambda is responsible for first-time StudentProfile
@@ -528,10 +541,23 @@ Resources:
                   console.log(`No StudentProfile for ${userId}/${tenantId} — skipping mirror (post-auth Lambda will create on first login)`);
                   return;
               }
-              const approles = [
-                  ...((newUserDefaults && newUserDefaults.tenantRoles) || []),
-                  ...((newUserDefaults && newUserDefaults.featureRoles) || [])
-              ];
+              // Rebuild approles from the canonical source of truth so subsequent
+              // WP pushes can't clobber MyBosun-owned feature roles. approles =
+              // baseRole (from Cognito level) ∪ membership.roles ∪ featureRoles.
+              // featureRoles stays in approles transitionally until notifications
+              // read from TenantMemberships directly.
+              const baseRole = ROLE_BY_LEVEL[accessLevel] || ROLE_BY_LEVEL.suspended;
+              let membership = null;
+              if (TENANT_MEMBERSHIPS_TABLE) {
+                  const { Item } = await ddb.send(new GetCommand({
+                      TableName: TENANT_MEMBERSHIPS_TABLE,
+                      Key: { userId, tenantId }
+                  }));
+                  membership = Item || null;
+              }
+              const extraRoles = ((membership && membership.roles) || []).filter(r => r !== baseRole);
+              const featureRoles = (membership && membership.featureRoles) || [];
+              const approles = [baseRole, ...extraRoles, ...featureRoles];
               const mirrorStatus = status === 'SUSPENDED' ? 'Inactive' : 'Active';
               await ddb.send(new UpdateCommand({
                   TableName: STUDENT_PROFILES_TABLE,
@@ -559,7 +585,7 @@ Resources:
 
               await reconcileTenantGroups(userPoolId, user.email, tenantId, accessLevel);
               await upsertTenantMembership(cognitoSub, tenantId, status, wpSync.newUserDefaults);
-              await mirrorStudentProfile(cognitoSub, tenantId, status, wpSync.newUserDefaults);
+              await mirrorStudentProfile(cognitoSub, tenantId, status, accessLevel);
           }
 
           async function applyTenantUnsync(userPoolId, tenantId, user, cognitoSub) {
@@ -580,7 +606,7 @@ Resources:
                   console.error('Tenant group cleanup failed:', err);
               }
               await deleteTenantMembership(cognitoSub, tenantId);
-              await mirrorStudentProfile(cognitoSub, tenantId, 'SUSPENDED', null);
+              await mirrorStudentProfile(cognitoSub, tenantId, 'SUSPENDED', 'suspended');
           }
 
           // Fans a batch of up to MAX_BULK_BATCH user payloads onto SQS using
