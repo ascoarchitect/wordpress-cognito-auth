@@ -375,7 +375,11 @@ Resources:
               }
           }
 
-          async function getWpSyncConfig(tenantId) {
+          // Reads the tenant's config ONCE and returns both blocks the sync
+          // needs: `wpSync` (role → access-level mapping, as always) and
+          // `membership` (the MyBosun membership module's settings, of which
+          // only `statusAuthority` matters here).
+          async function getTenantConfig(tenantId) {
               if (!TENANT_CONFIG_TABLE) {
                   throw new Error('TENANT_CONFIG_TABLE env var is required for tenant sync');
               }
@@ -385,9 +389,49 @@ Resources:
               }));
               if (!Item) {
                   console.warn(`No TenantConfig found for tenantId=${tenantId}`);
-                  return null;
+                  return { wpSync: null, membership: null };
               }
-              return Item.wpSync || null;
+              return { wpSync: Item.wpSync || null, membership: Item.membership || null };
+          }
+
+          // Who owns TenantMemberships.status for this tenant?
+          //
+          // 'wordpress' (the default, and every tenant today): this Lambda
+          //   writes status, Cognito groups and wpMembership, exactly as it
+          //   always has.
+          // 'mybosun'   (post-cutover): the MyBosun membership module is the
+          //   sole writer of both projections. This Lambda drops to an
+          //   IDENTITY pipe — it still creates and updates the Cognito user and
+          //   still seeds a TenantMemberships row for someone brand new, but it
+          //   writes no status, touches no group and stops sending wpMembership.
+          //
+          // FAIL CLOSED, in the direction of "not mine": anything other than a
+          // literal 'mybosun' means WordPress still owns status. A typo in
+          // TenantConfig must never silently stop the sync writing the bit
+          // Gate 1 enforces.
+          function resolveStatusAuthority(membershipConfig) {
+              const value = membershipConfig && membershipConfig.statusAuthority;
+              return value === 'mybosun' ? 'mybosun' : 'wordpress';
+          }
+
+          // Rank and category, wherever the plugin put them.
+          //
+          // The v3.1 payload carries them inside the top-level `membership`
+          // block. Older plugins nested them under `extra`, which this Lambda
+          // never read — it has always looked at the top level — which is why
+          // custom:wp_memberrank / custom:wp_membercategory are unset across
+          // the live pool. Reading all three positions fixes that for existing
+          // installs without requiring a plugin upgrade first.
+          function resolveMemberField(user, field) {
+              if (!user) return null;
+              const topLevel = field === 'rank' ? user.wp_memberrank : user.wp_membercategory;
+              if (topLevel) return topLevel;
+              const membership = user.membership || {};
+              const fromBlock = field === 'rank' ? membership.memberRank : membership.memberCategory;
+              if (fromBlock) return fromBlock;
+              const extra = user.extra || {};
+              const fromExtra = field === 'rank' ? extra.wp_memberrank : extra.wp_membercategory;
+              return fromExtra || null;
           }
 
           function deriveAccessLevel(wpRoles, accessLevelMap) {
@@ -456,7 +500,7 @@ Resources:
               }
           }
 
-          async function upsertTenantMembership(userId, tenantId, status, newUserDefaults) {
+          async function upsertTenantMembership(userId, tenantId, status, newUserDefaults, wpMembership) {
               if (!TENANT_MEMBERSHIPS_TABLE) {
                   console.warn('TENANT_MEMBERSHIPS_TABLE not set — skipping membership upsert');
                   return;
@@ -478,6 +522,83 @@ Resources:
               // unioned on top, deduped.
               const configuredDefaults = (newUserDefaults && newUserDefaults.featureRoles) || [];
               const seededFeatureRoles = Array.from(new Set([BASELINE_FEATURE_ROLE, ...configuredDefaults]));
+
+              // `wpMembership` is the WooCommerce membership block from the v3.1
+              // payload, stamped with when it was seen. It is migration-era
+              // PROVENANCE on a MyBosun-owned row — the membership module reads
+              // it in-app to seed and reconcile Memberships, which is what lets
+              // the migration happen with no CSV and no cross-system matching.
+              // It is skipped entirely once the tenant flips to 'mybosun', and
+              // dropped when WooCommerce is retired.
+              const membershipBlock = wpMembership
+                  ? Object.assign({}, wpMembership, { syncedAt: timestamp })
+                  : null;
+
+              const insertItem = {
+                  userId,
+                  tenantId,
+                  roles: [],
+                  featureRoles: seededFeatureRoles,
+                  status,
+                  source: 'wp-sync',
+                  createdAt: timestamp,
+                  updatedAt: timestamp
+              };
+              if (membershipBlock) {
+                  insertItem.wpMembership = membershipBlock;
+              }
+
+              try {
+                  await ddb.send(new PutCommand({
+                      TableName: TENANT_MEMBERSHIPS_TABLE,
+                      Item: insertItem,
+                      ConditionExpression: 'attribute_not_exists(userId) AND attribute_not_exists(tenantId)'
+                  }));
+                  console.log(`Created TenantMembership ${userId}/${tenantId} with status=${status}, wpMembership=${membershipBlock ? 'yes' : 'no'}`);
+                  return;
+              } catch (err) {
+                  if (err.name !== 'ConditionalCheckFailedException') throw err;
+              }
+
+              // Existing row: still a NARROW update — status, and now the
+              // membership provenance block. Everything else on the row
+              // (featureRoles above all) is MyBosun-owned and must survive
+              // every WordPress push.
+              const names = { '#status': 'status' };
+              const values = { ':status': status, ':updatedAt': timestamp };
+              let expression = 'SET #status = :status, updatedAt = :updatedAt';
+              if (membershipBlock) {
+                  expression += ', #wpMembership = :wpMembership';
+                  names['#wpMembership'] = 'wpMembership';
+                  values[':wpMembership'] = membershipBlock;
+              }
+
+              await ddb.send(new UpdateCommand({
+                  TableName: TENANT_MEMBERSHIPS_TABLE,
+                  Key: { userId, tenantId },
+                  UpdateExpression: expression,
+                  ExpressionAttributeNames: names,
+                  ExpressionAttributeValues: values
+              }));
+              console.log(`Updated TenantMembership ${userId}/${tenantId} status=${status}, wpMembership=${membershipBlock ? 'yes' : 'no'}`);
+          }
+
+          // Identity-only upsert, used once a tenant has flipped to 'mybosun'.
+          //
+          // A brand-new WordPress user still needs a TenantMemberships row, or
+          // nothing downstream can resolve them at all. It is seeded SUSPENDED
+          // — fail closed: access post-cutover is granted by the membership
+          // module when a member pays, never by the arrival of a WP account.
+          // An EXISTING row is left completely untouched: no status, no groups,
+          // no wpMembership.
+          async function upsertTenantMembershipIdentityOnly(userId, tenantId, newUserDefaults) {
+              if (!TENANT_MEMBERSHIPS_TABLE) {
+                  console.warn('TENANT_MEMBERSHIPS_TABLE not set — skipping membership upsert');
+                  return;
+              }
+              const timestamp = new Date().toISOString();
+              const configuredDefaults = (newUserDefaults && newUserDefaults.featureRoles) || [];
+              const seededFeatureRoles = Array.from(new Set([BASELINE_FEATURE_ROLE, ...configuredDefaults]));
               try {
                   await ddb.send(new PutCommand({
                       TableName: TENANT_MEMBERSHIPS_TABLE,
@@ -486,27 +607,18 @@ Resources:
                           tenantId,
                           roles: [],
                           featureRoles: seededFeatureRoles,
-                          status,
+                          status: 'SUSPENDED',
                           source: 'wp-sync',
                           createdAt: timestamp,
                           updatedAt: timestamp
                       },
                       ConditionExpression: 'attribute_not_exists(userId) AND attribute_not_exists(tenantId)'
                   }));
-                  console.log(`Created TenantMembership ${userId}/${tenantId} with status=${status}`);
-                  return;
+                  console.log(`Created TenantMembership ${userId}/${tenantId} (identity-only, statusAuthority=mybosun)`);
               } catch (err) {
                   if (err.name !== 'ConditionalCheckFailedException') throw err;
+                  console.log(`TenantMembership ${userId}/${tenantId} exists — identity-only sync leaves it untouched`);
               }
-
-              await ddb.send(new UpdateCommand({
-                  TableName: TENANT_MEMBERSHIPS_TABLE,
-                  Key: { userId, tenantId },
-                  UpdateExpression: 'SET #status = :status, updatedAt = :updatedAt',
-                  ExpressionAttributeNames: { '#status': 'status' },
-                  ExpressionAttributeValues: { ':status': status, ':updatedAt': timestamp }
-              }));
-              console.log(`Updated TenantMembership ${userId}/${tenantId} status=${status}`);
           }
 
           async function deleteTenantMembership(userId, tenantId) {
@@ -586,9 +698,21 @@ Resources:
           }
 
           async function applyTenantSync(userPoolId, tenantId, user, cognitoSub) {
-              const wpSync = await getWpSyncConfig(tenantId);
+              const { wpSync, membership: membershipConfig } = await getTenantConfig(tenantId);
               if (!wpSync || wpSync.isActive === false) {
                   console.log(`tenant ${tenantId} wpSync inactive or missing — skipping tenant sync`);
+                  return;
+              }
+
+              // Post-cutover: MyBosun owns membership status. This Lambda drops
+              // to an identity pipe. Skipping the groups matters as much as
+              // skipping the status write — a WordPress role change must not be
+              // able to re-grant or revoke access once the membership module's
+              // lifecycle is the authority, or the two writers fight and members
+              // flap between member and suspended.
+              if (resolveStatusAuthority(membershipConfig) === 'mybosun') {
+                  console.log(`tenant ${tenantId} statusAuthority=mybosun — identity upsert only (skipping status, Cognito groups, wpMembership and the StudentProfile status mirror)`);
+                  await upsertTenantMembershipIdentityOnly(cognitoSub, tenantId, wpSync.newUserDefaults);
                   return;
               }
 
@@ -596,11 +720,21 @@ Resources:
               const status = accessLevel === 'suspended' ? 'SUSPENDED' : 'ACTIVE';
 
               await reconcileTenantGroups(userPoolId, user.email, tenantId, accessLevel);
-              await upsertTenantMembership(cognitoSub, tenantId, status, wpSync.newUserDefaults);
+              await upsertTenantMembership(cognitoSub, tenantId, status, wpSync.newUserDefaults, user.membership || null);
               await mirrorStudentProfile(cognitoSub, tenantId, status, accessLevel);
           }
 
           async function applyTenantUnsync(userPoolId, tenantId, user, cognitoSub) {
+              // Post-cutover a WordPress account removal is an IDENTITY event
+              // and nothing more. Suspending a paid-up MyBosun member because
+              // somebody tidied up the WordPress user list would be the same
+              // dual-writer bug in reverse.
+              const { membership: membershipConfig } = await getTenantConfig(tenantId);
+              if (resolveStatusAuthority(membershipConfig) === 'mybosun') {
+                  console.log(`tenant ${tenantId} statusAuthority=mybosun — WP user deletion does NOT revoke MyBosun access`);
+                  return;
+              }
+
               // WP user deletion ⇒ revoke MyBosun access for *this tenant only*.
               try {
                   for (const level of ['member', 'suspended']) {
@@ -826,16 +960,21 @@ Resources:
                       Value: user.wp_user_id.toString()
                   });
               }
-              if (user.wp_membercategory) {
+              // Resolved across all three payload positions — see
+              // resolveMemberField. Reading only the top level is why these two
+              // attributes are unset on every user in the live pool today.
+              const createCategory = resolveMemberField(user, 'category');
+              if (createCategory) {
                   input.UserAttributes.push({
                       Name: 'custom:wp_membercategory',
-                      Value: user.wp_membercategory.toString()
+                      Value: createCategory.toString()
                   });
               }
-              if (user.wp_memberrank) {
+              const createRank = resolveMemberField(user, 'rank');
+              if (createRank) {
                   input.UserAttributes.push({
                       Name: 'custom:wp_memberrank',
-                      Value: user.wp_memberrank.toString()
+                      Value: createRank.toString()
                   });
               }
               if (user.firstName) {
@@ -908,16 +1047,18 @@ Resources:
                               Value: user.wp_user_id.toString()
                           });
                       }
-                      if (user.wp_membercategory) {
+                      const updateCategory = resolveMemberField(user, 'category');
+                      if (updateCategory) {
                           input.UserAttributes.push({
                               Name: 'custom:wp_membercategory',
-                              Value: user.wp_membercategory.toString()
+                              Value: updateCategory.toString()
                           });
                       }
-                      if (user.wp_memberrank) {
+                      const updateRank = resolveMemberField(user, 'rank');
+                      if (updateRank) {
                           input.UserAttributes.push({
                               Name: 'custom:wp_memberrank',
-                              Value: user.wp_memberrank.toString()
+                              Value: updateRank.toString()
                           });
                       }
                       if (user.firstName) {

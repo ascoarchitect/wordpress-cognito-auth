@@ -12,7 +12,7 @@ namespace WP_Cognito_Auth;
  *
  * Builds the canonical "dumb pipe" payload sent to the MyBosun sync Lambda.
  *
- * Payload contract (v3.0):
+ * Payload contract (v3.1):
  *   {
  *     tenantId:    "tenantId",
  *     wp_user_id:  123,
@@ -22,12 +22,21 @@ namespace WP_Cognito_Auth;
  *     lastName:    "Doe",
  *     name:        "Jane Doe",
  *     wp_roles:    ["subscriber", "wc_member"],
+ *     membership:  { ... WooCommerce membership block, v3.1 ... },  // TOP LEVEL
  *     extra:       { ... custom per-tenant fields ... }
  *   }
  *
  * Tenant-specific extras (e.g. `wpuef_cid_c6` / `wpuef_cid_c10`) are no longer
  * hard-coded — they are added via the `wp_cognito_user_extra_fields` filter so
  * each WP install can attach its own metadata.
+ *
+ * `membership` (v3.1) sits at the TOP LEVEL, deliberately NOT inside `extra`.
+ * The Lambda has always read `wp_memberrank` / `wp_membercategory` from the top
+ * level while this class nested them under `extra`, which is why those Cognito
+ * custom attributes are unset across the live pool. The membership block
+ * carries rank and category itself, so the Lambda finds them where it looks.
+ * It is omitted entirely when the install has no WooCommerce Memberships.
+ * See {@see Membership_Data}.
  */
 class User_Data {
 
@@ -86,6 +95,14 @@ class User_Data {
 			'wp_roles'   => array_values( (array) $user->roles ),
 			'extra'      => is_array( $extras ) ? $extras : array(),
 		);
+
+		// WooCommerce membership state (v3.1). Omitted rather than sent as null
+		// so an install without Memberships produces the exact v3.0 payload and
+		// the Lambda's "no block" branch is unambiguous.
+		$membership = Membership_Data::prepare( $user_id, $user );
+		if ( is_array( $membership ) && ! empty( $membership ) ) {
+			$payload['membership'] = $membership;
+		}
 
 		if ( ! empty( $cognito_user_id ) ) {
 			$payload['cognito_user_id'] = $cognito_user_id;

@@ -151,6 +151,15 @@ class Plugin {
 			add_action( 'set_user_role', array( $this->sync, 'on_user_role_change' ), 10, 3 );
 			add_action( 'add_user_role', array( $this->sync, 'on_user_role_added' ), 10, 2 );
 			add_action( 'remove_user_role', array( $this->sync, 'on_user_role_removed' ), 10, 2 );
+
+			// WooCommerce membership awareness (v3.1) — the FIRST WooCommerce
+			// hooks this plugin has ever registered. Until now WooCommerce
+			// reached the sync only indirectly, by flipping a WP role, which
+			// carries no date and misses a plain renewal entirely.
+			//
+			// Registered only when the extensions are actually installed, so a
+			// tenant without WooCommerce Memberships is unaffected.
+			$this->setup_membership_hooks();
 		}
 
 		// Authentication hooks (if auth is enabled)
@@ -163,6 +172,32 @@ class Plugin {
 		// Admin hooks.
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
 		add_action( 'wp_ajax_cognito_test_connection', array( $this->admin, 'ajax_test_connection' ) );
+	}
+
+	/**
+	 * Register the WooCommerce Memberships / Subscriptions hooks (v3.1).
+	 *
+	 * A membership save, a status change, a subscription status change or a
+	 * move of the subscription's next-payment date all push the user the same
+	 * way a role change does. The pushes are batched to WordPress shutdown, so
+	 * a renewal that fires three of these produces one payload.
+	 *
+	 * @return void
+	 */
+	private function setup_membership_hooks() {
+		if ( class_exists( 'WP_Cognito_Auth\Membership_Data' ) && Membership_Data::is_available() ) {
+			add_action( 'wc_memberships_user_membership_created', array( $this->sync, 'on_wc_membership_saved' ), 10, 2 );
+			add_action( 'wc_memberships_user_membership_saved', array( $this->sync, 'on_wc_membership_saved' ), 10, 2 );
+			add_action( 'wc_memberships_user_membership_status_changed', array( $this->sync, 'on_wc_membership_status_changed' ), 10, 3 );
+		}
+
+		// WooCommerce Subscriptions holds the authoritative paid-through date
+		// (`_schedule_next_payment`), so its own events matter even though the
+		// membership object may not change at all on a successful renewal.
+		if ( function_exists( 'wcs_get_subscription' ) ) {
+			add_action( 'woocommerce_subscription_status_updated', array( $this->sync, 'on_wc_subscription_status_updated' ), 10, 3 );
+			add_action( 'woocommerce_subscription_date_updated', array( $this->sync, 'on_wc_subscription_date_updated' ), 10, 3 );
+		}
 	}
 
 	/**

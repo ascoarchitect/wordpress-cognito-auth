@@ -31,6 +31,25 @@ class Sync {
 	private $pending_group_sync = array();
 
 	/**
+	 * Users whose WooCommerce membership changed this request, pending a push.
+	 *
+	 * Kept separate from {@see $pending_group_sync} because the two are gated
+	 * on different feature toggles: a renewal must push whenever `sync` is on,
+	 * even on an install that has `group_sync` disabled.
+	 *
+	 * @var array
+	 */
+	private $pending_membership_sync = array();
+
+	/**
+	 * Users already pushed during this request, so a membership change and a
+	 * role change in the same request produce ONE push rather than two.
+	 *
+	 * @var array
+	 */
+	private $pushed_this_request = array();
+
+	/**
 	 * API component instance
 	 *
 	 * @var API
@@ -44,9 +63,12 @@ class Sync {
 	 */
 	public function __construct( $api ) {
 		$this->api = $api;
-		
+
 		// Hook into shutdown to process any pending group syncs
 		add_action( 'shutdown', array( $this, 'process_pending_group_syncs' ), 5 );
+		// Membership pushes run AFTER group syncs (priority 6) so a request that
+		// changed both a role and a membership de-duplicates to a single push.
+		add_action( 'shutdown', array( $this, 'process_pending_membership_syncs' ), 6 );
 	}
 
 	/**
@@ -228,6 +250,209 @@ class Sync {
 		$this->pending_group_sync = array();
 	}
 
+	// -----------------------------------------------------------------------
+	// WooCommerce membership awareness (v3.1)
+	// -----------------------------------------------------------------------
+	//
+	// Until now the plugin listened to WordPress core user/role hooks ONLY and
+	// WooCommerce drove sync indirectly, by flipping a user's WP role. That is
+	// enough to move somebody between `member` and `suspended`, but it never
+	// carries a DATE — and a renewal that simply extends an existing membership
+	// changes no role at all, so today it produces no sync whatsoever.
+	//
+	// MyBosun is taking ownership of membership, and needs each member's
+	// paid-through date to stay live right up to the cutover: renewals roll all
+	// year (every month of the next twelve carries 20–88 of them), so a one-off
+	// export goes stale within weeks. These hooks make a renewal push exactly
+	// the way a role change does today.
+	//
+	// All four are wired in Plugin::setup_hooks() only when the relevant
+	// WooCommerce extension is actually present.
+
+	/**
+	 * A user membership was created or saved.
+	 *
+	 * Signature matches `wc_memberships_user_membership_saved` and
+	 * `wc_memberships_user_membership_created`.
+	 *
+	 * @param object $plan WC_Memberships_Membership_Plan (unused).
+	 * @param array  $args { user_id, user_membership_id, is_update }.
+	 * @return void
+	 */
+	public function on_wc_membership_saved( $plan, $args = array() ) {
+		unset( $plan );
+		$user_id = is_array( $args ) && isset( $args['user_id'] ) ? (int) $args['user_id'] : 0;
+		$this->schedule_membership_sync( $user_id, 'membership_saved' );
+	}
+
+	/**
+	 * A user membership changed status (active ⇄ paused ⇄ cancelled ⇄ expired).
+	 *
+	 * Signature matches `wc_memberships_user_membership_status_changed`.
+	 *
+	 * @param object $user_membership WC_Memberships_User_Membership.
+	 * @param string $old_status      Previous status (unused).
+	 * @param string $new_status      New status (unused).
+	 * @return void
+	 */
+	public function on_wc_membership_status_changed( $user_membership, $old_status = '', $new_status = '' ) {
+		unset( $old_status, $new_status );
+		$this->schedule_membership_sync( $this->user_id_from_membership( $user_membership ), 'membership_status_changed' );
+	}
+
+	/**
+	 * A subscription changed status.
+	 *
+	 * Signature matches `woocommerce_subscription_status_updated`.
+	 *
+	 * @param object $subscription WC_Subscription.
+	 * @param string $new_status   New status (unused).
+	 * @param string $old_status   Previous status (unused).
+	 * @return void
+	 */
+	public function on_wc_subscription_status_updated( $subscription, $new_status = '', $old_status = '' ) {
+		unset( $new_status, $old_status );
+		$this->schedule_membership_sync( $this->user_id_from_subscription( $subscription ), 'subscription_status_updated' );
+	}
+
+	/**
+	 * A subscription date moved.
+	 *
+	 * This is THE renewal signal: a successful renewal rewrites
+	 * `_schedule_next_payment`, which is the club's authoritative paid-through
+	 * date. Other date types are ignored so an unrelated schedule tweak does
+	 * not produce a push.
+	 *
+	 * Signature matches `woocommerce_subscription_date_updated`.
+	 *
+	 * @param object $subscription WC_Subscription.
+	 * @param string $date_type    Date key, e.g. 'next_payment'.
+	 * @param string $datetime     New value (unused).
+	 * @return void
+	 */
+	public function on_wc_subscription_date_updated( $subscription, $date_type = '', $datetime = '' ) {
+		unset( $datetime );
+		if ( 'next_payment' !== $date_type && 'end' !== $date_type ) {
+			return;
+		}
+		$this->schedule_membership_sync( $this->user_id_from_subscription( $subscription ), 'subscription_date_updated' );
+	}
+
+	/**
+	 * Extract the WP user id from a WC user membership object.
+	 *
+	 * @param object $user_membership WC_Memberships_User_Membership.
+	 * @return int
+	 */
+	private function user_id_from_membership( $user_membership ) {
+		if ( is_object( $user_membership ) && method_exists( $user_membership, 'get_user_id' ) ) {
+			return (int) $user_membership->get_user_id();
+		}
+		return 0;
+	}
+
+	/**
+	 * Extract the WP user id from a WC subscription object.
+	 *
+	 * @param object $subscription WC_Subscription.
+	 * @return int
+	 */
+	private function user_id_from_subscription( $subscription ) {
+		if ( is_object( $subscription ) && method_exists( $subscription, 'get_user_id' ) ) {
+			return (int) $subscription->get_user_id();
+		}
+		return 0;
+	}
+
+	/**
+	 * Queue a user for a membership-driven push at shutdown.
+	 *
+	 * Deferred for the same reason group syncs are: a single WooCommerce
+	 * renewal fires several of these hooks in one request, and pushing on each
+	 * would send four identical payloads.
+	 *
+	 * @param int    $user_id WordPress user ID.
+	 * @param string $reason  Which hook queued it (logging only).
+	 * @return void
+	 */
+	private function schedule_membership_sync( $user_id, $reason = '' ) {
+		if ( $user_id <= 0 ) {
+			return;
+		}
+		$features = get_option( 'wp_cognito_features', array() );
+		if ( empty( $features['sync'] ) ) {
+			return;
+		}
+		if ( ! in_array( $user_id, $this->pending_membership_sync, true ) ) {
+			$this->pending_membership_sync[] = $user_id;
+			$this->api->log_message( "Queued membership push for user {$user_id} ({$reason})", 'info' );
+		}
+	}
+
+	/**
+	 * Push every user whose membership changed this request.
+	 *
+	 * Called on WordPress shutdown at priority 6 — after the group-sync batch,
+	 * so anyone already pushed there is skipped.
+	 *
+	 * @return void
+	 */
+	public function process_pending_membership_syncs() {
+		if ( empty( $this->pending_membership_sync ) ) {
+			return;
+		}
+
+		$features = get_option( 'wp_cognito_features', array() );
+		if ( empty( $features['sync'] ) ) {
+			$this->pending_membership_sync = array();
+			return;
+		}
+
+		$pending                       = $this->pending_membership_sync;
+		$this->pending_membership_sync = array();
+
+		foreach ( $pending as $user_id ) {
+			if ( in_array( $user_id, $this->pushed_this_request, true ) ) {
+				continue;
+			}
+			$this->push_user( $user_id );
+		}
+	}
+
+	/**
+	 * Push a user's full payload to the Lambda (create or update).
+	 *
+	 * The payload is the canonical one — identity, roles AND the v3.1
+	 * membership block — so a membership-driven push and a role-driven push are
+	 * byte-identical apart from what changed.
+	 *
+	 * @param int $user_id WordPress user ID.
+	 * @return bool Success status.
+	 */
+	private function push_user( $user_id ) {
+		$user = get_user_by( 'id', $user_id );
+		if ( ! $user ) {
+			$this->api->log_message( "Cannot push user {$user_id}: not found", 'error' );
+			return false;
+		}
+
+		$cognito_user_id = get_user_meta( $user_id, 'cognito_user_id', true );
+		$user_data       = $this->prepare_user_data( $user_id, $user );
+
+		if ( ! empty( $cognito_user_id ) ) {
+			$user_data['cognito_user_id'] = $cognito_user_id;
+			$result                       = $this->api->update_user( $user_data );
+		} else {
+			$result = $this->api->create_user( $user_data );
+		}
+
+		if ( ! in_array( $user_id, $this->pushed_this_request, true ) ) {
+			$this->pushed_this_request[] = $user_id;
+		}
+
+		return (bool) $result;
+	}
+
 	/**
 	 * Prepare user data for Cognito synchronization
 	 *
@@ -271,6 +496,12 @@ class Sync {
 			$result                       = $this->api->update_user( $user_data );
 		} else {
 			$result = $this->api->create_user( $user_data );
+		}
+
+		// Record the push so a membership change queued in the same request does
+		// not send a second, identical payload at shutdown priority 6.
+		if ( ! in_array( $user_id, $this->pushed_this_request, true ) ) {
+			$this->pushed_this_request[] = $user_id;
 		}
 
 		if ( $result ) {
