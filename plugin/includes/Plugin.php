@@ -63,6 +63,13 @@ class Plugin {
 	private $meta_box;
 
 	/**
+	 * Inbound member push (MyBosun → WordPress), when the feature is on.
+	 *
+	 * @var Inbound|null
+	 */
+	private $inbound;
+
+	/**
 	 * Initialize plugin components based on feature settings
 	 */
 	public function init() {
@@ -114,6 +121,12 @@ class Plugin {
 			}
 
 			// Setup hooks.
+			// Independent of the outbound `sync` feature: a site may receive
+			// members from MyBosun without ever pushing anything back.
+			if ( ! empty( $features['inbound'] ) ) {
+				$this->inbound = new Inbound( $this->api );
+			}
+
 			$this->setup_hooks();
 
 		} catch ( \Exception $e ) {
@@ -170,6 +183,10 @@ class Plugin {
 		}
 
 		// Admin hooks.
+		if ( $this->inbound ) {
+			add_action( 'rest_api_init', array( $this->inbound, 'register_routes' ) );
+		}
+
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
 		add_action( 'wp_ajax_cognito_test_connection', array( $this->admin, 'ajax_test_connection' ) );
 	}

@@ -158,6 +158,11 @@ class Admin {
 		register_setting( 'wp_cognito_sync_settings', 'wp_cognito_sync_on_login' );
 		register_setting( 'wp_cognito_sync_settings', 'wp_cognito_sync_groups' );
 		register_setting( 'wp_cognito_sync_settings', 'wp_cognito_tenant_id' );
+
+		// Inbound (MyBosun → WordPress) settings.
+		register_setting( 'wp_cognito_inbound_settings', Inbound::OPTION_SECRET, array( 'sanitize_callback' => 'sanitize_text_field' ) );
+		register_setting( 'wp_cognito_inbound_settings', Inbound::OPTION_JIT_ROLE_MEMBER, array( 'sanitize_callback' => 'sanitize_key' ) );
+		register_setting( 'wp_cognito_inbound_settings', Inbound::OPTION_JIT_ROLE_SUSPENDED, array( 'sanitize_callback' => 'sanitize_key' ) );
 	}
 
 	/**
@@ -171,7 +176,10 @@ class Admin {
 			return array();
 		}
 
-		$allowed_features = array( 'authentication', 'sync', 'group_sync' );
+		// `user_data_master` was missing from this list, so the "Cognito masters
+		// user data" choice never persisted — every save silently reverted it
+		// to WordPress. It is a value, not a flag, so it is passed through.
+		$allowed_features = array( 'authentication', 'sync', 'group_sync', 'inbound', 'user_data_master' );
 		return array_intersect_key( $features, array_flip( $allowed_features ) );
 	}
 
@@ -193,6 +201,10 @@ class Admin {
 				<a href="?page=wp-cognito-auth&tab=sync"
 					class="nav-tab <?php echo $active_tab === 'sync' ? 'nav-tab-active' : ''; ?>">
 					<?php esc_html_e( 'Sync Settings', 'wp-cognito-auth' ); ?>
+				</a>
+				<a href="?page=wp-cognito-auth&tab=mybosun"
+					class="nav-tab <?php echo $active_tab === 'mybosun' ? 'nav-tab-active' : ''; ?>">
+					<?php esc_html_e( 'MyBosun Push', 'wp-cognito-auth' ); ?>
 				</a>
 				<a href="?page=wp-cognito-auth&tab=bulk-sync"
 					class="nav-tab <?php echo $active_tab === 'bulk-sync' ? 'nav-tab-active' : ''; ?>">
@@ -220,6 +232,9 @@ class Admin {
 						break;
 					case 'sync':
 						$this->render_sync_settings_tab();
+						break;
+					case 'mybosun':
+						$this->render_mybosun_tab();
 						break;
 					case 'bulk-sync':
 						$this->render_bulk_sync_tab();
@@ -295,6 +310,21 @@ class Admin {
 								</label>
 								<p class="description">
 									<?php esc_html_e( 'Sync WordPress roles with Cognito groups', 'wp-cognito-auth' ); ?>
+								</p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e( 'Receive members from MyBosun', 'wp-cognito-auth' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox"
+											name="wp_cognito_features[inbound]"
+											value="1"
+											<?php checked( ! empty( $features['inbound'] ) ); ?>>
+									<?php esc_html_e( 'Enable the inbound member push (MyBosun → WordPress)', 'wp-cognito-auth' ); ?>
+								</label>
+								<p class="description">
+									<?php esc_html_e( 'Exposes a signed REST endpoint that MyBosun pushes member records to once it owns membership. Configure the secret and roles in the MyBosun Push tab.', 'wp-cognito-auth' ); ?>
 								</p>
 							</td>
 						</tr>
@@ -582,6 +612,107 @@ class Admin {
 				<div id="test-results" style="margin-top: 10px;"></div>
 			</div>
 
+			<?php submit_button(); ?>
+		</form>
+		<?php
+	}
+
+	/**
+	 * MyBosun push tab — the receiving end of the direction flip.
+	 */
+	private function render_mybosun_tab() {
+		$features  = get_option( 'wp_cognito_features', array() );
+		$tenant_id = get_option( 'wp_cognito_tenant_id', '' );
+		$endpoint  = rest_url( Inbound::REST_NAMESPACE . Inbound::REST_ROUTE );
+		$roles     = wp_roles()->get_names();
+		if ( empty( $features['inbound'] ) ) {
+			echo '<div class="notice notice-warning"><p>' .
+				esc_html__( 'The "Receive members from MyBosun" feature is not enabled. Enable it in the Features tab first.', 'wp-cognito-auth' ) .
+				'</p></div>';
+		}
+		if ( empty( $tenant_id ) ) {
+			echo '<div class="notice notice-error"><p>' .
+				esc_html__( 'No Tenant ID is set (Sync Settings tab). Inbound requests are refused until it matches the tenant MyBosun sends.', 'wp-cognito-auth' ) .
+				'</p></div>';
+		}
+		?>
+		<p>
+			<?php esc_html_e( 'Once MyBosun owns membership it pushes member records to this site: a bulk load into an empty site, then one record per status change or identity edit. This site validates the role it is told to set and never invents one.', 'wp-cognito-auth' ); ?>
+		</p>
+		<form method="post" action="options.php">
+			<?php settings_fields( 'wp_cognito_inbound_settings' ); ?>
+			<table class="form-table">
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Endpoint', 'wp-cognito-auth' ); ?></th>
+					<td>
+						<code><?php echo esc_html( $endpoint ); ?></code>
+						<p class="description">
+							<?php esc_html_e( 'Enter this URL as the site URL in the tenant\'s MyBosun push configuration. Requests must carry X-MyBosun-Timestamp and X-MyBosun-Signature (HMAC-SHA256 of "timestamp.body" with the shared secret).', 'wp-cognito-auth' ); ?>
+						</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row">
+						<label for="<?php echo esc_attr( Inbound::OPTION_SECRET ); ?>"><?php esc_html_e( 'Shared secret', 'wp-cognito-auth' ); ?></label>
+					</th>
+					<td>
+						<input type="password"
+								name="<?php echo esc_attr( Inbound::OPTION_SECRET ); ?>"
+								id="<?php echo esc_attr( Inbound::OPTION_SECRET ); ?>"
+								value="<?php echo esc_attr( get_option( Inbound::OPTION_SECRET, '' ) ); ?>"
+								class="regular-text"
+								autocomplete="new-password">
+						<p class="description">
+							<?php esc_html_e( 'The same value MyBosun holds for this tenant. Requests are refused while this is empty.', 'wp-cognito-auth' ); ?>
+						</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row">
+						<label for="<?php echo esc_attr( Inbound::OPTION_JIT_ROLE_MEMBER ); ?>"><?php esc_html_e( 'Role at login: member', 'wp-cognito-auth' ); ?></label>
+					</th>
+					<td>
+						<select name="<?php echo esc_attr( Inbound::OPTION_JIT_ROLE_MEMBER ); ?>" id="<?php echo esc_attr( Inbound::OPTION_JIT_ROLE_MEMBER ); ?>">
+							<option value=""><?php esc_html_e( '— use the default role —', 'wp-cognito-auth' ); ?></option>
+							<?php foreach ( $roles as $slug => $label ) : ?>
+								<option value="<?php echo esc_attr( $slug ); ?>" <?php selected( get_option( Inbound::OPTION_JIT_ROLE_MEMBER, '' ), $slug ); ?>><?php echo esc_html( $label ); ?></option>
+							<?php endforeach; ?>
+						</select>
+						<p class="description">
+							<?php
+							/* translators: %s: Cognito group name */
+							echo esc_html( sprintf( __( 'Given at first login to a member in the Cognito group %s. A later push from MyBosun replaces it with the state-level role.', 'wp-cognito-auth' ), 'MyBosun_' . $tenant_id . '_member' ) );
+							?>
+						</p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row">
+						<label for="<?php echo esc_attr( Inbound::OPTION_JIT_ROLE_SUSPENDED ); ?>"><?php esc_html_e( 'Role at login: suspended', 'wp-cognito-auth' ); ?></label>
+					</th>
+					<td>
+						<select name="<?php echo esc_attr( Inbound::OPTION_JIT_ROLE_SUSPENDED ); ?>" id="<?php echo esc_attr( Inbound::OPTION_JIT_ROLE_SUSPENDED ); ?>">
+							<option value=""><?php esc_html_e( '— use the default role —', 'wp-cognito-auth' ); ?></option>
+							<?php foreach ( $roles as $slug => $label ) : ?>
+								<option value="<?php echo esc_attr( $slug ); ?>" <?php selected( get_option( Inbound::OPTION_JIT_ROLE_SUSPENDED, '' ), $slug ); ?>><?php echo esc_html( $label ); ?></option>
+							<?php endforeach; ?>
+						</select>
+						<p class="description">
+							<?php
+							/* translators: %s: Cognito group name */
+							echo esc_html( sprintf( __( 'Given at first login to a member in the Cognito group %s.', 'wp-cognito-auth' ), 'MyBosun_' . $tenant_id . '_suspended' ) );
+							?>
+						</p>
+					</td>
+				</tr>
+			</table>
+			<h3><?php esc_html_e( 'Rules', 'wp-cognito-auth' ); ?></h3>
+			<ul style="list-style: disc; margin-left: 20px;">
+				<li><?php esc_html_e( 'The role slug in a pushed record must already exist here. Unknown slugs are refused for that member and reported back by name; they are never mapped to subscriber and never created.', 'wp-cognito-auth' ); ?></li>
+				<li><?php esc_html_e( 'Only the one role this plugin assigned is ever replaced. Administrator, editor and any role a person granted by hand are left untouched.', 'wp-cognito-auth' ); ?></li>
+				<li><?php esc_html_e( 'Members are matched by Cognito ID first, then by email, then created. An email already held by a different user is refused as a conflict.', 'wp-cognito-auth' ); ?></li>
+				<li><?php esc_html_e( 'Writes made by a push do not trigger the outbound sync, so nothing bounces back to MyBosun.', 'wp-cognito-auth' ); ?></li>
+			</ul>
 			<?php submit_button(); ?>
 		</form>
 		<?php

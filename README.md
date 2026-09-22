@@ -2,6 +2,59 @@
 
 A comprehensive, production-ready WordPress plugin that integrates Amazon Cognito authentication with user synchronization and content restriction capabilities.
 
+## Version 3.2 — Inbound member push (MyBosun → WordPress)
+
+> The direction flip. Once MyBosun owns membership (`statusAuthority = mybosun`)
+> it pushes member records **to** this site — a bulk load into an empty site,
+> then one record per status change or identity edit. WordPress decides nothing
+> about membership in this path: it takes the record, finds or creates the
+> person, and sets the role it was told to set. Design: the MyBosun vault note
+> `MyBosun/Membership/wp-reverse-sync.md`.
+
+**Endpoint** — `POST /wp-json/wp-cognito-auth/v1/members`, enabled by the
+*Receive members from MyBosun* feature and configured on the **MyBosun Push**
+tab (shared secret, just-in-time roles). Up to 50 members per request.
+
+**Authentication** — `X-MyBosun-Timestamp` (unix seconds, ±5 min) and
+`X-MyBosun-Signature` = hex HMAC-SHA256(secret, `timestamp.body`). A seen
+signature is refused for 10 minutes (replay guard). `tenantId` in the body must
+equal the site's Tenant ID or the whole request is refused.
+
+**Record** — `{ sub, email, firstName, lastName, name, membershipState, groups[], wpRole }`.
+No renewal dates, plans or payment data cross the wire. `ERASED` members are
+skipped even if sent.
+
+**Rules the MyBosun side relies on**
+
+- **Validate, never invent.** `wpRole` must already exist (`get_role`). Unknown
+  slugs are refused for that member and reported back by name — never mapped to
+  subscriber, never created. The new site has no WooCommerce, so `customer`
+  does not exist; roles come from a role-editor plugin and MyBosun only names them.
+- **One derived role, replaced not appended.** The plugin remembers the role it
+  assigned (`cognito_assigned_role`) and removes only that one on change.
+  `administrator`, `editor` and anything granted by hand are untouched.
+- **Match by sub, then email, then create.** An email change lands on the same
+  WordPress user; an address already held by a *different* user is refused as
+  `email-conflict`.
+- **Loop guard.** Writes made while applying a record do not fire the outbound
+  sync (`Inbound::applying()` is checked by every `Sync` hook).
+- **Just-in-time login** keeps working for anyone the push missed: creation
+  takes the role mapped from the member's Cognito group (`MyBosun_{tenant}_member`
+  / `_suspended`, MyBosun Push tab), falling back to the default role, and
+  records it so a later push can replace exactly that role. An existing user
+  gets the group role only if no push has assigned one yet — the push is
+  finer-grained and wins.
+
+**Response** — per-member `{ sub, outcome: created|updated|refused|skipped, reason, wpUserId }`
+plus `counts`, so the MyBosun run report can name people, not tally them.
+
+**Also in 3.2** — the Features tab's *User Data Master* choice now persists; it
+was being dropped by the feature sanitiser, so "Cognito masters user data" had
+never actually saved.
+
+**Tests** — `cd plugin && vendor/bin/phpunit` (WordPress is stubbed in
+`tests/bootstrap.php`; no database or WordPress checkout needed).
+
 ## Version 3.0 — Tenant-aware sync (current)
 
 > **Read this before relying on anything below.** v3.0 is a substantive

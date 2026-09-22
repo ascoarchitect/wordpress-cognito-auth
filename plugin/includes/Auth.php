@@ -629,6 +629,7 @@ class Auth {
 		if ( ! empty( $existing_user ) ) {
 			$user = $existing_user[0];
 			$this->update_user_from_cognito( $user->ID, $cognito_user_data );
+			$this->apply_jit_role( $user->ID, $cognito_user_data );
 			return $user;
 		}
 
@@ -637,6 +638,7 @@ class Auth {
 		if ( $user ) {
 			update_user_meta( $user->ID, 'cognito_user_id', $cognito_sub );
 			$this->update_user_from_cognito( $user->ID, $cognito_user_data );
+			$this->apply_jit_role( $user->ID, $cognito_user_data );
 			return $user;
 		}
 
@@ -652,10 +654,16 @@ class Auth {
 			return false;
 		}
 
-		// Set default role.
-		$default_role = get_option( 'wp_cognito_auth_default_role', 'subscriber' );
-		$user         = new \WP_User( $user_id );
-		$user->set_role( $default_role );
+		// The member's group decides the role when the site has a map for it
+		// (Inbound::OPTION_JIT_ROLE_*); the configured default is the fallback.
+		// Either way the choice is RECORDED so a later push from MyBosun can
+		// replace exactly this role and no other.
+		$groups   = isset( $cognito_user_data['cognito:groups'] ) ? (array) $cognito_user_data['cognito:groups'] : array();
+		$jit_role = Inbound::jit_role_for_groups( $groups );
+		$role     = '' !== $jit_role ? $jit_role : get_option( 'wp_cognito_auth_default_role', 'subscriber' );
+		$user     = new \WP_User( $user_id );
+		$user->set_role( $role );
+		Inbound::record_assigned_role( $user_id, $role );
 
 		// Store Cognito ID and update user data.
 		update_user_meta( $user_id, 'cognito_user_id', $cognito_sub );
@@ -1015,14 +1023,18 @@ class Auth {
 			? $cognito_data['preferred_username']
 			: explode( '@', $email )[0];
 
-		$original_username = $username;
-		$counter           = 1;
+		return Inbound::unique_username( $username );
+	}
 
-		while ( username_exists( $username ) ) {
-			$username = $original_username . $counter;
-			++$counter;
-		}
-
-		return $username;
+	/**
+	 * Give an existing member the role their Cognito group implies — unless a
+	 * push from MyBosun has already assigned one, which is finer-grained and wins.
+	 *
+	 * @param int   $user_id           The WordPress user ID.
+	 * @param array $cognito_user_data User data from Cognito.
+	 */
+	private function apply_jit_role( $user_id, $cognito_user_data ) {
+		$groups = isset( $cognito_user_data['cognito:groups'] ) ? (array) $cognito_user_data['cognito:groups'] : array();
+		Inbound::apply_jit_role( $user_id, $groups );
 	}
 }

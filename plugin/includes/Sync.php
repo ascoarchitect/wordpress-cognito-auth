@@ -77,6 +77,9 @@ class Sync {
 	 * @param int $user_id WordPress user ID.
 	 */
 	public function on_user_create( $user_id ) {
+		if ( Inbound::applying() ) {
+			return; // A pushed record is being written; do not bounce it back to MyBosun.
+		}
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['sync'] ) ) {
 			return;
@@ -102,6 +105,9 @@ class Sync {
 	 * @param WP_User $old_user_data Previous user data (unused).
 	 */
 	public function on_user_update( $user_id, $old_user_data = null ) {
+		if ( Inbound::applying() ) {
+			return; // A pushed record is being written; do not bounce it back to MyBosun.
+		}
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['sync'] ) ) {
 			return;
@@ -175,6 +181,9 @@ class Sync {
 	 * @param array  $old_roles Previous user roles (unused).
 	 */
 	public function on_user_role_change( $user_id, $new_role, $old_roles ) {
+		if ( Inbound::applying() ) {
+			return; // A pushed record is being written; do not bounce it back to MyBosun.
+		}
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['group_sync'] ) ) {
 			return;
@@ -190,6 +199,9 @@ class Sync {
 	 * @param string $role    Added role (unused).
 	 */
 	public function on_user_role_added( $user_id, $role ) {
+		if ( Inbound::applying() ) {
+			return; // A pushed record is being written; do not bounce it back to MyBosun.
+		}
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['group_sync'] ) ) {
 			return;
@@ -205,6 +217,9 @@ class Sync {
 	 * @param string $role    Removed role (unused).
 	 */
 	public function on_user_role_removed( $user_id, $role ) {
+		if ( Inbound::applying() ) {
+			return; // A pushed record is being written; do not bounce it back to MyBosun.
+		}
 		$features = get_option( 'wp_cognito_features', array() );
 		if ( empty( $features['group_sync'] ) ) {
 			return;
