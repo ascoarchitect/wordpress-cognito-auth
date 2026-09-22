@@ -345,22 +345,50 @@ Resources:
           // from the WP payload before trusting it as the TenantMembership PK.
           const COGNITO_SUB_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+          // The sub Cognito ACTUALLY acted on for this message, or null.
+          //
+          // A create response carries it in User.Attributes; updateUser stamps the
+          // username it successfully updated onto `cognitoUsername`. Either one is
+          // ground truth in a way the WP payload never is: WordPress only knows the
+          // sub it was told about last, and if that Cognito user has since been
+          // deleted, the sync silently recreates the person under a NEW sub while
+          // WP keeps sending the old one. Keying TenantMemberships on the stale sub
+          // splits the member's identity — a login as the new sub finds no tenant
+          // row, and the roster finds no profile. That is exactly what happened on
+          // 2026-09-21, so the Cognito response wins here, always.
+          function subFromCognitoResult(cognitoResult) {
+              if (!cognitoResult) return null;
+              const userObj = cognitoResult.User || (cognitoResult.result && cognitoResult.result.User);
+              if (userObj && Array.isArray(userObj.Attributes)) {
+                  const subAttr = userObj.Attributes.find(a => a.Name === 'sub');
+                  if (subAttr && COGNITO_SUB_RE.test(subAttr.Value)) return subAttr.Value;
+              }
+              if (cognitoResult.cognitoUsername && COGNITO_SUB_RE.test(cognitoResult.cognitoUsername)) {
+                  return cognitoResult.cognitoUsername;
+              }
+              return null;
+          }
           async function resolveCognitoSub(userPoolId, user, cognitoResult) {
-              // Trust a passed cognito_user_id ONLY if it's a real Cognito sub.
+              const passed = user.cognito_user_id && COGNITO_SUB_RE.test(user.cognito_user_id)
+                  ? user.cognito_user_id
+                  : null;
+              // 1. What Cognito just did outranks what WP believes (see above).
+              const acted = subFromCognitoResult(cognitoResult);
+              if (acted) {
+                  if (passed && passed !== acted) {
+                      console.warn(`Stale cognito_user_id from WordPress for ${user.email}: WP sent ${passed}, Cognito resolved ${acted} — keying tenant data on ${acted}. Run the plugin's Cognito ID backfill so WP catches up.`);
+                  }
+                  return acted;
+              }
+              // 2. Trust a passed cognito_user_id ONLY if it's a real Cognito sub.
               // The WP plugin's "create -> already exists -> fall back to update"
               // path passes the email here as a stand-in; if we accepted that
               // verbatim we'd write the email as the TenantMembership userId PK
               // and the post-auth Lambda would never find the record on login.
-              if (user.cognito_user_id && COGNITO_SUB_RE.test(user.cognito_user_id)) {
-                  return user.cognito_user_id;
+              if (passed) {
+                  return passed;
               }
-              // create response: result.User.Attributes contains "sub"
-              const userObj = cognitoResult && (cognitoResult.User || (cognitoResult.result && cognitoResult.result.User));
-              if (userObj && Array.isArray(userObj.Attributes)) {
-                  const subAttr = userObj.Attributes.find(a => a.Name === 'sub');
-                  if (subAttr) return subAttr.Value;
-              }
-              // update response or fallback: look up by email username.
+              // 3. Nothing usable from either side: look up by email username.
               try {
                   const got = await client.send(new AdminGetUserCommand({
                       UserPoolId: userPoolId,
@@ -1016,6 +1044,23 @@ Resources:
                   console.log('Final createUser result being returned:', JSON.stringify(createResult, null, 2));
                   return createResult;
               } catch (error) {
+                  // The person already exists under this email — typically a bulk
+                  // push for a WP user whose cognito_user_id meta is missing or
+                  // stale. Before this, the message failed, SQS retried it three
+                  // times and it died in the DLQ with the member's tenant row
+                  // never written. Resolve the live sub by email and carry on as
+                  // an update; updateUser stamps that sub on the result so the
+                  // tenant mirror is keyed correctly.
+                  if (error.name === 'UsernameExistsException') {
+                      console.log(`Cognito user already exists for ${user.email} — resolving sub by email and updating instead`);
+                      const got = await client.send(new AdminGetUserCommand({
+                          UserPoolId: userPoolId,
+                          Username: user.email
+                      }));
+                      const subAttr = (got.UserAttributes || []).find(a => a.Name === 'sub');
+                      const resolvedSub = (subAttr && subAttr.Value) || got.Username;
+                      return await updateUser(userPoolId, { ...user, cognito_user_id: resolvedSub });
+                  }
                   console.error('Error in createUser:', error);
                   throw error;
               }
