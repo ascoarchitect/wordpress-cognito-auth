@@ -693,6 +693,20 @@ wp-cognito-auth/
 
 ## 📝 Changelog
 
+### Sync Lambda — `custom:wp_user_id` retired (stack update only, no plugin change)
+- **No more `custom:wp_user_id`**: the sync Lambda no longer writes the
+  attribute on create or update. WordPress user IDs are per site while the
+  attribute is pool-wide, and nothing reads it; MyBosun records the ID per
+  tenant instead (`TenantMemberships.wp.userId`). Values already in a pool are
+  left as they are. The plugin still sends `wp_user_id` in the payload (it keys
+  `resolve_subs` and the `cognito_user_id` meta write-back), so no plugin
+  upgrade is needed.
+- **New `WriteWordPressMemberAttributes` parameter** (default `'true'`): set
+  `'false'` for a pool that defines no `custom:wp_*` attributes, and the Lambda
+  stops writing `custom:wp_memberrank` / `custom:wp_membercategory` too. A pool
+  without those attributes would otherwise reject the whole create/update.
+  The plugin's login mapping of those two attributes is already `isset`-guarded.
+
 ### Version 3.0.5
 - **Sync Lambda — email-based sub resolution on update**: After the v3.0 shift
   to an asynchronous SQS path, the plugin never receives the Cognito `sub`

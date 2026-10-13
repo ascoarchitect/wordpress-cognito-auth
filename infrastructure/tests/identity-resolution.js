@@ -49,12 +49,15 @@ const NEW = '22222222-2222-4222-8222-222222222222'; // the sub Cognito actually 
 const EMAIL = 'member@example.com';
 const err = (name) => Object.assign(new Error(name), { name });
 
-function scenario(name, { poolHasOld, poolHasNew, payload }) {
+function scenario(name, { poolHasOld, poolHasNew, payload, env = {} }) {
   const ddbWrites = [];
+  const attrs = new Set(); // every Cognito attribute name the Lambda tried to write
+  delete process.env.WRITE_WP_MEMBER_ATTRIBUTES; Object.assign(process.env, env);
   let created = false;
   const userOf = (sub) => ({ Username: sub, UserAttributes: [{ Name: 'sub', Value: sub }, { Name: 'email', Value: EMAIL }] });
   global.__cognitoSend = async (cmd) => {
     const i = cmd.input || {};
+    (i.UserAttributes || []).forEach((a) => attrs.add(a.Name));
     switch (cmd.name) {
       case 'AdminUpdateUserAttributesCommand':
         if (i.Username === OLD && poolHasOld) return {};
@@ -91,29 +94,39 @@ function scenario(name, { poolHasOld, poolHasNew, payload }) {
       const tm = ddbWrites.filter(w => w.table === 'tm').map(w => w.userId);
       const body = JSON.parse(res.body);
       const returned = body.result && body.result.User && (body.result.User.Attributes || []).find(a => a.Name === 'sub');
-      return { name, status: res.statusCode, tmKeyedOn: [...new Set(tm)], returnedSub: returned ? returned.Value : null, created, staleWarn: warn.some(w => /Stale cognito_user_id/.test(w)), error: body.error || null };
+      return { name, status: res.statusCode, tmKeyedOn: [...new Set(tm)], returnedSub: returned ? returned.Value : null, created, staleWarn: warn.some(w => /Stale cognito_user_id/.test(w)), attrs: [...attrs], error: body.error || null };
     });
 }
 
 (async () => {
-  const user = { email: EMAIL, username: 'hermione', wp_user_id: 5175, wp_roles: ['subscriber'], membership: { plan: 'members', status: 'active' } };
+  const user = { email: EMAIL, username: 'hermione', wp_user_id: 5175, wp_roles: ['subscriber'], membership: { plan: 'members', status: 'active', memberRank: 'Flt Lt', memberCategory: 'Serving' } };
   const results = [];
   results.push(await scenario('A. update, WP meta points at a deleted Cognito user', { poolHasOld: false, poolHasNew: false, payload: { action: 'update', user: { ...user, cognito_user_id: OLD } } }));
   results.push(await scenario('B. bulk create for a user who already exists', { poolHasOld: false, poolHasNew: true, payload: { action: 'create', user } }));
   results.push(await scenario('C. update with a live sub (regression)', { poolHasOld: true, poolHasNew: false, payload: { action: 'update', user: { ...user, cognito_user_id: OLD } } }));
   results.push(await scenario('D. update with email stand-in id (regression)', { poolHasOld: false, poolHasNew: true, payload: { action: 'update', user: { ...user, cognito_user_id: EMAIL } } }));
+  // MS-04: a pool with no custom:wp_* attributes (the production pool).
+  results.push(await scenario('E. create into a pool without custom:wp_* attributes', { poolHasOld: false, poolHasNew: false, payload: { action: 'create', user }, env: { WRITE_WP_MEMBER_ATTRIBUTES: 'false' } }));
+  results.push(await scenario('F. update into a pool without custom:wp_* attributes', { poolHasOld: true, poolHasNew: false, payload: { action: 'update', user: { ...user, cognito_user_id: OLD } }, env: { WRITE_WP_MEMBER_ATTRIBUTES: 'false' } }));
   const expect = {
     'A': { tm: NEW, status: 200, staleWarn: true },
     'B': { tm: NEW, status: 200 },
     'C': { tm: OLD, status: 200 },
     'D': { tm: NEW, status: 200 },
+    'E': { tm: NEW, status: 200, noWpAttrs: true },
+    'F': { tm: OLD, status: 200, noWpAttrs: true },
   };
   let failed = 0;
   for (const r of results) {
     const e = expect[r.name[0]];
-    const ok = r.status === e.status && r.tmKeyedOn.length === 1 && r.tmKeyedOn[0] === e.tm && (e.staleWarn === undefined || r.staleWarn === e.staleWarn);
+    // MS-04: custom:wp_user_id is never written; with the member attributes
+    // switched off, no custom:wp_* attribute is written at all. With them on
+    // (the default), rank and category still reach the pool.
+    const wpAttrs = r.attrs.filter(a => a.startsWith('custom:wp_'));
+    const attrsOk = !r.attrs.includes('custom:wp_user_id') && (e.noWpAttrs ? wpAttrs.length === 0 : wpAttrs.includes('custom:wp_memberrank') && wpAttrs.includes('custom:wp_membercategory'));
+    const ok = attrsOk && r.status === e.status && r.tmKeyedOn.length === 1 && r.tmKeyedOn[0] === e.tm && (e.staleWarn === undefined || r.staleWarn === e.staleWarn);
     if (!ok) failed += 1;
-    console.log(`${ok ? 'PASS' : 'FAIL'}  ${r.name}  → status ${r.status}, tenant rows keyed on ${r.tmKeyedOn.join(',') || '(none)'}${r.error ? ', error ' + r.error : ''}`);
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${r.name}  → status ${r.status}, tenant rows keyed on ${r.tmKeyedOn.join(',') || '(none)'}, wp attrs [${r.attrs.filter(a => a.startsWith('custom:wp_')).join(',')}]${r.error ? ', error ' + r.error : ''}`);
   }
   process.exit(failed ? 1 : 0);
 })().catch(e => { console.error('HARNESS FAILED', e); process.exit(1); });

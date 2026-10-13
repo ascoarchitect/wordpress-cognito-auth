@@ -34,6 +34,17 @@ Parameters:
     Type: String
     Description: ARN of the customer-managed KMS key encrypting the MyBosun tenant DynamoDB tables. The sync Lambda role must be able to Decrypt (read) and GenerateDataKey (write) with this key.
 
+  # The sync never writes custom:wp_user_id (MS-04). Rank and category are
+  # still written to pools that define them; a pool with no custom:wp_*
+  # attributes (the production pool) needs this set to 'false'.
+  WriteWordPressMemberAttributes:
+    Type: String
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Description: Write custom:wp_memberrank and custom:wp_membercategory to Cognito. Set 'false' for a pool without custom:wp_* attributes.
+
 Resources:
   # SQS Dead Letter Queue — receives messages that fail after maxReceiveCount
   # attempts. Operators monitor depth; redrive manually after fixing root cause.
@@ -134,6 +145,11 @@ Resources:
           const TENANT_CONFIG_TABLE = process.env.TENANT_CONFIG_TABLE;
           const TENANT_MEMBERSHIPS_TABLE = process.env.TENANT_MEMBERSHIPS_TABLE;
           const STUDENT_PROFILES_TABLE = process.env.STUDENT_PROFILES_TABLE;
+          // custom:wp_memberrank / custom:wp_membercategory are only written
+          // when the pool defines them. A pool without them (the production
+          // pool, MS-23) rejects the whole AdminCreateUser/UpdateUserAttributes
+          // call, so its stack sets WriteWordPressMemberAttributes=false.
+          const WRITE_WP_MEMBER_ATTRIBUTES = process.env.WRITE_WP_MEMBER_ATTRIBUTES !== 'false';
           const MAX_BULK_BATCH = 25;
           const SQS_BATCH_SIZE = 10;
           // Cap WC-derived access at "member": tenant admin is granted manually
@@ -982,23 +998,21 @@ Resources:
                   MessageAction: 'SUPPRESS',
                   TemporaryPassword: generateRandomString(30)
               };
-              if (user.wp_user_id) {
-                  input.UserAttributes.push({
-                      Name: 'custom:wp_user_id',
-                      Value: user.wp_user_id.toString()
-                  });
-              }
-              // Resolved across all three payload positions — see
-              // resolveMemberField. Reading only the top level is why these two
-              // attributes are unset on every user in the live pool today.
-              const createCategory = resolveMemberField(user, 'category');
+              // custom:wp_user_id is no longer written (MS-04, SW-D7/SW-D16):
+              // WordPress IDs are per site, not per pool, and nothing reads the
+              // attribute. The per-tenant record is TenantMemberships.wp.userId.
+              //
+              // Rank and category are resolved across all three payload
+              // positions — see resolveMemberField — and written only where the
+              // pool defines the attributes (WRITE_WP_MEMBER_ATTRIBUTES).
+              const createCategory = WRITE_WP_MEMBER_ATTRIBUTES && resolveMemberField(user, 'category');
               if (createCategory) {
                   input.UserAttributes.push({
                       Name: 'custom:wp_membercategory',
                       Value: createCategory.toString()
                   });
               }
-              const createRank = resolveMemberField(user, 'rank');
+              const createRank = WRITE_WP_MEMBER_ATTRIBUTES && resolveMemberField(user, 'rank');
               if (createRank) {
                   input.UserAttributes.push({
                       Name: 'custom:wp_memberrank',
@@ -1086,20 +1100,15 @@ Resources:
                               }
                           ]
                       };
-                      if (user.wp_user_id) {
-                          input.UserAttributes.push({
-                              Name: 'custom:wp_user_id',
-                              Value: user.wp_user_id.toString()
-                          });
-                      }
-                      const updateCategory = resolveMemberField(user, 'category');
+                      // No custom:wp_user_id (MS-04) — see createUser.
+                      const updateCategory = WRITE_WP_MEMBER_ATTRIBUTES && resolveMemberField(user, 'category');
                       if (updateCategory) {
                           input.UserAttributes.push({
                               Name: 'custom:wp_membercategory',
                               Value: updateCategory.toString()
                           });
                       }
-                      const updateRank = resolveMemberField(user, 'rank');
+                      const updateRank = WRITE_WP_MEMBER_ATTRIBUTES && resolveMemberField(user, 'rank');
                       if (updateRank) {
                           input.UserAttributes.push({
                               Name: 'custom:wp_memberrank',
@@ -1233,6 +1242,7 @@ Resources:
           TENANT_CONFIG_TABLE: !Ref TenantConfigTableName
           TENANT_MEMBERSHIPS_TABLE: !Ref TenantMembershipsTableName
           STUDENT_PROFILES_TABLE: !Ref StudentProfileTableName
+          WRITE_WP_MEMBER_ATTRIBUTES: !Ref WriteWordPressMemberAttributes
 
   # Lambda Execution Role
   LambdaExecutionRole:
