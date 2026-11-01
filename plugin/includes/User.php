@@ -446,6 +446,13 @@ class User {
 			wp_send_json_error( __( 'User not found', 'wp-cognito-auth' ) );
 		}
 
+		// On a push-only site the Cognito link is what MyBosun pushes to and
+		// what locks the profile. Removing it would unlock the member's name,
+		// email and password and get their next push refused as email-conflict.
+		if ( Push_Only::enabled() ) {
+			wp_send_json_error( __( 'This site is push-only: members are linked by MyBosun and cannot be unlinked here. Remove or change the member in MyBosun instead.', 'wp-cognito-auth' ) );
+		}
+
 		// Remove Cognito user ID and sync settings.
 		delete_user_meta( $user_id, 'cognito_user_id' );
 		delete_user_meta( $user_id, 'cognito_last_sync' );

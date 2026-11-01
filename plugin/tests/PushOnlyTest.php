@@ -191,6 +191,63 @@ class PushOnlyTest extends TestCase {
 		$this->assertSame( array( 'email' => 'new@example.test', 'pass1' => 'x' ), $_POST );
 	}
 
+	// ── unlink refused (review P2) ──────────────────────────────────────────
+
+	private function unlink( $user_id ) {
+		$_POST = array( 'user_id' => (string) $user_id, 'nonce' => 'n' );
+		try {
+			( new WP_Cognito_Auth\User() )->ajax_unlink_user();
+		} catch ( WP_Fake_Json_Response $r ) {
+			return $r;
+		}
+		$this->fail( 'ajax_unlink_user must answer with JSON' );
+	}
+
+	public function test_unlink_is_refused_on_a_push_only_site_and_the_link_stays() {
+		$r = $this->unlink( $this->member );
+		$this->assertFalse( $r->success );
+		$this->assertStringContainsString( 'push-only', $r->data );
+		$this->assertSame( self::SUB, get_user_meta( $this->member, Inbound::META_SUB, true ) );
+		$this->assertTrue( Push_Only::is_locked( $this->member ) );
+	}
+
+	public function test_unlink_still_works_when_push_only_is_off() {
+		update_option( 'wp_cognito_features', array( 'inbound' => 1 ) );
+		$r = $this->unlink( $this->member );
+		$this->assertTrue( $r->success );
+		$this->assertSame( '', get_user_meta( $this->member, Inbound::META_SUB, true ) );
+	}
+
+	// ── hooks (review P3) ───────────────────────────────────────────────────
+
+	public function test_register_hooks_every_guard_when_push_only() {
+		WP_Fake::$hooks = array();
+		Push_Only::register();
+		foreach ( array(
+			'option_wp_cognito_features',
+			'pre_option_users_can_register',
+			'wp_pre_insert_user_data',
+			'insert_user_meta',
+			'send_email_change_email',
+			'send_password_change_email',
+			'allow_password_reset',
+			'show_password_fields',
+			'personal_options_update',
+			'edit_user_profile_update',
+			'show_user_profile',
+			'edit_user_profile',
+		) as $hook ) {
+			$this->assertArrayHasKey( $hook, WP_Fake::$hooks, "missing hook {$hook}" );
+		}
+	}
+
+	public function test_register_hooks_only_the_option_filter_when_off() {
+		update_option( 'wp_cognito_features', array( 'inbound' => 1 ) );
+		WP_Fake::$hooks = array();
+		Push_Only::register();
+		$this->assertSame( array( 'option_wp_cognito_features' ), array_keys( WP_Fake::$hooks ) );
+	}
+
 	// ── JIT group → role map (shipped in 3.2, still the login path's map) ──
 
 	public function test_jit_map_still_applies_on_a_push_only_site() {
