@@ -28,7 +28,15 @@ members from MyBosun*). It does four things:
 - **Just-in-time group → role map** is unchanged: the MyBosun Push tab's
   *Role at login: member / suspended* (3.2).
 
-**Tests** — `plugin/tests/PushOnlyTest.php`.
+**Roster read (MS-22).** The inbound route also answers a signed read for
+MyBosun's WordPress reconcile report: a body of
+`{ tenantId, roster: { page, perPage } }` (instead of `members`) returns one
+page of the site's users, `perPage` 1–500 (default 200), ordered by user id:
+`{ roster: { page, perPage, total, totalPages, users: [{ wpUserId, sub, roles[], assignedRole, membershipState }] } }`.
+No names and no email addresses leave the site this way, and nothing is
+written. Same signature, replay guard and tenant check as a push.
+
+**Tests** — `plugin/tests/PushOnlyTest.php`; the roster read in `plugin/tests/InboundTest.php`.
 
 ## Version 3.2 — Inbound member push (MyBosun → WordPress)
 

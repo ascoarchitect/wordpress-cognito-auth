@@ -122,14 +122,20 @@ function get_user_by( $field, $value ) {
 	return false;
 }
 function get_users( $args ) {
-	$out = array();
-	foreach ( WP_Fake::$users as $u ) {
+	$out  = array();
+	$skip = isset( $args['offset'] ) ? (int) $args['offset'] : 0;
+	$ids  = array_keys( WP_Fake::$users );
+	sort( $ids );
+	foreach ( $ids as $id ) {
+		$u = WP_Fake::$users[ $id ];
 		if ( isset( $args['meta_key'] ) && get_user_meta( $u->ID, $args['meta_key'], true ) !== $args['meta_value'] ) { continue; }
+		if ( $skip > 0 ) { --$skip; continue; }
 		$out[] = new WP_User( $u->ID );
 		if ( isset( $args['number'] ) && count( $out ) >= $args['number'] ) { break; }
 	}
 	return $out;
 }
+function count_users() { return array( 'total_users' => count( WP_Fake::$users ) ); }
 function wp_insert_user( $data ) {
 	if ( empty( $data['user_email'] ) || get_user_by( 'email', $data['user_email'] ) ) { return new WP_Error( 'existing_user_email', 'Sorry, that email address is already used!' ); }
 	if ( username_exists( $data['user_login'] ) ) { return new WP_Error( 'existing_user_login', 'Sorry, that username already exists!' ); }
