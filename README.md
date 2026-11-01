@@ -2,6 +2,34 @@
 
 A comprehensive, production-ready WordPress plugin that integrates Amazon Cognito authentication with user synchronization and content restriction capabilities.
 
+## Version 3.3 — Push-only site mode
+
+> For the new club site after the switchover (MyBosun switchover design SW-D5,
+> task MS-05). The site signs members in with Cognito and receives them by
+> push from MyBosun; it sends nothing back. Identity is edited in MyBosun,
+> applications arrive in MyBosun and passwords live in Cognito, so a
+> WordPress-side edit could only be overwritten by the next push.
+
+Turn on **Features → Push-only site** (with *Authentication* and *Receive
+members from MyBosun*). It does four things:
+
+- **Outbound sync off.** *User Sync* and *Group Sync* read as off everywhere and
+  are dropped when the Features tab saves, so nothing reaches MyBosun or Cognito
+  from this site.
+- **Self-registration off.** `users_can_register` reads as 0, which closes
+  `wp-login.php?action=register`. Administrators can still add local accounts.
+- **Member profile fields read-only.** For a Cognito-linked user (has a
+  `cognito_user_id`): email, first and last name, display name and password
+  cannot be changed in WordPress — not on the profile screen, not by an
+  administrator, not over the REST API. Password reset is refused for them.
+  The push and the Cognito login path still write. Local accounts with no
+  Cognito link are unaffected. Override per user with the
+  `wp_cognito_profile_locked` filter (`$locked, $user_id`).
+- **Just-in-time group → role map** is unchanged: the MyBosun Push tab's
+  *Role at login: member / suspended* (3.2).
+
+**Tests** — `plugin/tests/PushOnlyTest.php`.
+
 ## Version 3.2 — Inbound member push (MyBosun → WordPress)
 
 > The direction flip. Once MyBosun owns membership (`statusAuthority = mybosun`)

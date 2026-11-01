@@ -756,7 +756,12 @@ class Auth {
 
 			if ( ! empty( $updates ) ) {
 				$updates['ID'] = $user_id;
-				wp_update_user( $updates );
+				// Cognito's own values, so a push-only site's profile lock lets them through.
+				Push_Only::as_system(
+					function () use ( $updates ) {
+						return wp_update_user( $updates );
+					}
+				);
 			}
 		}
 		

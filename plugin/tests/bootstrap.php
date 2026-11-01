@@ -32,6 +32,7 @@ final class WP_Fake {
 	public static $users      = array(); // id => WP_User
 	public static $meta       = array(); // id => [key => value]
 	public static $routes     = array();
+	public static $hooks      = array(); // hook => [callbacks]
 	public static $next_id    = 1;
 
 	public static function reset() {
@@ -41,6 +42,7 @@ final class WP_Fake {
 		self::$users      = array();
 		self::$meta       = array();
 		self::$routes     = array();
+		self::$hooks      = array();
 		self::$next_id    = 1;
 	}
 }
@@ -55,7 +57,7 @@ class WP_Error {
 function is_wp_error( $t ) { return $t instanceof WP_Error; }
 
 class WP_User {
-	public $ID; public $user_login; public $user_email; public $display_name = ''; public $roles = array();
+	public $ID; public $user_login; public $user_email; public $user_pass = ''; public $display_name = ''; public $roles = array();
 	public function __construct( $id = 0 ) { $this->ID = (int) $id; if ( $id && isset( WP_Fake::$users[ $id ] ) ) { foreach ( get_object_vars( WP_Fake::$users[ $id ] ) as $k => $v ) { $this->$k = $v; } } }
 	public function add_role( $r ) { if ( ! in_array( $r, $this->roles, true ) ) { $this->roles[] = $r; } $this->persist(); }
 	public function remove_role( $r ) { $this->roles = array_values( array_diff( $this->roles, array( $r ) ) ); $this->persist(); }
@@ -90,9 +92,21 @@ function wp_generate_password( $l = 12, $s = true, $e = false ) { return str_rep
 function wp_json_encode( $d ) { return json_encode( $d ); }
 function __( $t, $d = null ) { return $t; }
 function esc_html__( $t, $d = null ) { return $t; }
-function add_filter( $h, $c, $p = 10, $a = 1 ) { return true; }
+function add_filter( $h, $c, $p = 10, $a = 1 ) { WP_Fake::$hooks[ $h ][] = $c; return true; }
 function remove_filter( $h, $c, $p = 10 ) { return true; }
 function __return_false() { return false; }
+function add_action( $h, $c, $p = 10, $a = 1 ) { WP_Fake::$hooks[ $h ][] = $c; return true; }
+// AJAX: the JSON responders end the request in WordPress; here they throw.
+class WP_Fake_Json_Response extends Exception {
+	public $success; public $data;
+	public function __construct( $success, $data ) { parent::__construct( 'json' ); $this->success = $success; $this->data = $data; }
+}
+function check_ajax_referer( $action, $arg = false ) { return 1; }
+function current_user_can( $cap, $id = null ) { return true; }
+function wp_send_json_error( $data = null ) { throw new WP_Fake_Json_Response( false, $data ); }
+function wp_send_json_success( $data = null ) { throw new WP_Fake_Json_Response( true, $data ); }
+function apply_filters( $h, $v ) { return $v; }
+function esc_html_e( $t, $d = null ) { echo $t; }
 
 // ── roles ──────────────────────────────────────────────────────────────────
 function get_role( $slug ) { return isset( WP_Fake::$roles[ $slug ] ) ? (object) array( 'name' => $slug ) : null; }

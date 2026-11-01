@@ -79,6 +79,10 @@ class Plugin {
 				return;
 			}
 
+			// Push-only site mode (MS-05) first: it filters the features option,
+			// so the outbound flags read as off before anything below reads them.
+			Push_Only::register();
+
 			// Load text domain.
 			add_action( 'init', array( $this, 'load_textdomain' ) );
 

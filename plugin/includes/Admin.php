@@ -179,8 +179,10 @@ class Admin {
 		// `user_data_master` was missing from this list, so the "Cognito masters
 		// user data" choice never persisted — every save silently reverted it
 		// to WordPress. It is a value, not a flag, so it is passed through.
-		$allowed_features = array( 'authentication', 'sync', 'group_sync', 'inbound', 'user_data_master' );
-		return array_intersect_key( $features, array_flip( $allowed_features ) );
+		$allowed_features = array( 'authentication', 'sync', 'group_sync', 'inbound', 'user_data_master', Push_Only::FEATURE );
+		// A push-only site never sends anything outbound, so the outbound
+		// flags are dropped on save rather than stored contradicting it.
+		return Push_Only::normalise_features( array_intersect_key( $features, array_flip( $allowed_features ) ) );
 	}
 
 	public function render_main_page() {
@@ -325,6 +327,21 @@ class Admin {
 								</label>
 								<p class="description">
 									<?php esc_html_e( 'Exposes a signed REST endpoint that MyBosun pushes member records to once it owns membership. Configure the secret and roles in the MyBosun Push tab.', 'wp-cognito-auth' ); ?>
+								</p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e( 'Push-only site', 'wp-cognito-auth' ); ?></th>
+							<td>
+								<label>
+									<input type="checkbox"
+											name="wp_cognito_features[<?php echo esc_attr( Push_Only::FEATURE ); ?>]"
+											value="1"
+											<?php checked( ! empty( $features[ Push_Only::FEATURE ] ) ); ?>>
+									<?php esc_html_e( 'MyBosun is the only source of members (push-only)', 'wp-cognito-auth' ); ?>
+								</label>
+								<p class="description">
+									<?php esc_html_e( 'For a site that only receives members from MyBosun. Turns User Sync and Group Sync off, closes WordPress self-registration, and makes the name, email address and password of Cognito-linked users read-only (they are edited in MyBosun). Local accounts with no Cognito link are unaffected.', 'wp-cognito-auth' ); ?>
 								</p>
 							</td>
 						</tr>
