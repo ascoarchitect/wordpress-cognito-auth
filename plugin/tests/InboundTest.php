@@ -212,6 +212,62 @@ class InboundTest extends TestCase {
 		$this->assertSame( 'club_member', get_user_meta( $id, Inbound::META_ASSIGNED_ROLE, true ) );
 	}
 
+	// ── roster read (MS-22) ─────────────────────────────────────────────────
+
+	private function roster_request( array $roster, $tenant = 'rafsa' ) {
+		return new WP_REST_Request( json_encode( array( 'tenantId' => $tenant, 'roster' => $roster ) ) );
+	}
+
+	public function test_roster_returns_ids_and_roles_never_names_or_emails() {
+		$pushed = $this->inbound->upsert_member( $this->member() );
+		$local  = wp_insert_user( array( 'user_login' => 'builder', 'user_email' => 'builder@example.com', 'role' => 'administrator' ) );
+
+		$res = $this->inbound->handle_members( $this->roster_request( array( 'page' => 1, 'perPage' => 10 ) ) );
+		$this->assertSame( 'rafsa', $res['tenantId'] );
+		$this->assertSame( array( 'page' => 1, 'perPage' => 10, 'total' => 2, 'totalPages' => 1 ), array_intersect_key( $res['roster'], array_flip( array( 'page', 'perPage', 'total', 'totalPages' ) ) ) );
+		$this->assertSame(
+			array(
+				array(
+					'wpUserId'        => $pushed['wpUserId'],
+					'sub'             => self::SUB_A,
+					'roles'           => array( 'club_member' ),
+					'assignedRole'    => 'club_member',
+					'membershipState' => 'ACTIVE',
+				),
+				array(
+					'wpUserId'        => $local,
+					'sub'             => null,
+					'roles'           => array( 'administrator' ),
+					'assignedRole'    => null,
+					'membershipState' => null,
+				),
+			),
+			$res['roster']['users']
+		);
+		$encoded = json_encode( $res );
+		$this->assertStringNotContainsString( '@example.com', $encoded );
+		$this->assertStringNotContainsString( 'Hermione', $encoded );
+	}
+
+	public function test_roster_pages_and_clamps_page_size() {
+		for ( $i = 1; $i <= 5; $i++ ) {
+			wp_insert_user( array( 'user_login' => "u{$i}", 'user_email' => "u{$i}@example.com", 'role' => 'subscriber' ) );
+		}
+		$page2 = $this->inbound->handle_members( $this->roster_request( array( 'page' => 2, 'perPage' => 2 ) ) );
+		$this->assertSame( array( 3, 4 ), array_column( $page2['roster']['users'], 'wpUserId' ) );
+		$this->assertSame( 3, $page2['roster']['totalPages'] );
+
+		$big = $this->inbound->handle_members( $this->roster_request( array( 'perPage' => 100000 ) ) );
+		$this->assertSame( Inbound::ROSTER_PAGE_MAX, $big['roster']['perPage'] );
+		$this->assertSame( 1, $big['roster']['page'] );
+	}
+
+	public function test_roster_read_is_tenant_checked_and_writes_nothing() {
+		$res = $this->inbound->handle_members( $this->roster_request( array( 'page' => 1 ), 'other' ) );
+		$this->assertSame( 'cognito_inbound_tenant_mismatch', $res->get_error_code() );
+		$this->assertCount( 0, WP_Fake::$users );
+	}
+
 	public function test_unique_username_avoids_collisions() {
 		wp_insert_user( array( 'user_login' => 'hermione', 'user_email' => 'a@example.com' ) );
 		wp_insert_user( array( 'user_login' => 'hermione1', 'user_email' => 'b@example.com' ) );

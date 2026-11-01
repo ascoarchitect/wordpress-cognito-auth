@@ -46,6 +46,16 @@ namespace WP_Cognito_Auth;
  * user is refused as `email-conflict` — that is a human decision.
  *
  * ---------------------------------------------------------------------------
+ * ROSTER READ (MS-22)
+ * ---------------------------------------------------------------------------
+ * The same signed route also answers a read: a body carrying `roster`
+ * (`{page, perPage}`) instead of `members` returns one page of this site's
+ * users as MyBosun's reconcile report needs them — WordPress user id, Cognito
+ * sub, roles, the role this plugin assigned and the last pushed membership
+ * state. No names and no email addresses: the report compares ids and roles,
+ * never identity. Nothing is written.
+ *
+ * ---------------------------------------------------------------------------
  * LOOP GUARD
  * ---------------------------------------------------------------------------
  * Every write here fires WordPress's own user hooks, which the outbound sync
@@ -60,6 +70,10 @@ class Inbound {
 
 	/** Records accepted per request. MyBosun batches to this. */
 	const MAX_BATCH = 50;
+
+	/** Users returned per roster page (MS-22), default and ceiling. */
+	const ROSTER_PAGE_DEFAULT = 200;
+	const ROSTER_PAGE_MAX     = 500;
 
 	/** Accepted clock skew on the signed timestamp, seconds. */
 	const MAX_SKEW_SECONDS = 300;
@@ -197,6 +211,10 @@ class Inbound {
 			return new \WP_Error( 'cognito_inbound_tenant_mismatch', 'tenantId does not match this site.', array( 'status' => 403 ) );
 		}
 
+		if ( isset( $body['roster'] ) ) {
+			return rest_ensure_response( $this->roster_page( is_array( $body['roster'] ) ? $body['roster'] : array(), $tenant ) );
+		}
+
 		$members = isset( $body['members'] ) ? $body['members'] : null;
 		if ( ! is_array( $members ) || empty( $members ) ) {
 			return new \WP_Error( 'cognito_inbound_no_members', 'members must be a non-empty array.', array( 'status' => 400 ) );
@@ -220,6 +238,61 @@ class Inbound {
 				'counts'     => $counts,
 				'results'    => $results,
 			)
+		);
+	}
+
+	/**
+	 * One page of the site's users for the reconcile report (MS-22). Ids and
+	 * roles only — never a name or an email address.
+	 *
+	 * @param array  $args   `{page, perPage}` from the request.
+	 * @param string $tenant This site's tenant id.
+	 * @return array
+	 */
+	public function roster_page( array $args, $tenant ) {
+		$page     = isset( $args['page'] ) ? max( 1, (int) $args['page'] ) : 1;
+		$per_page = isset( $args['perPage'] ) ? (int) $args['perPage'] : self::ROSTER_PAGE_DEFAULT;
+		$per_page = min( self::ROSTER_PAGE_MAX, max( 1, $per_page ) );
+
+		$counts = count_users();
+		$total  = isset( $counts['total_users'] ) ? (int) $counts['total_users'] : 0;
+
+		$users = get_users(
+			array(
+				'number'  => $per_page,
+				'offset'  => ( $page - 1 ) * $per_page,
+				'orderby' => 'ID',
+				'order'   => 'ASC',
+			)
+		);
+
+		$rows = array();
+		foreach ( $users as $user ) {
+			$id     = (int) $user->ID;
+			$sub    = (string) get_user_meta( $id, self::META_SUB, true );
+			$role   = (string) get_user_meta( $id, self::META_ASSIGNED_ROLE, true );
+			$state  = (string) get_user_meta( $id, self::META_MEMBERSHIP_STATE, true );
+			$rows[] = array(
+				'wpUserId'        => $id,
+				'sub'             => '' !== $sub ? $sub : null,
+				'roles'           => array_values( (array) $user->roles ),
+				'assignedRole'    => '' !== $role ? $role : null,
+				'membershipState' => '' !== $state ? $state : null,
+			);
+		}
+
+		$this->log( sprintf( 'Roster page %d read (%d users)', $page, count( $rows ) ), 'info' );
+
+		return array(
+			'tenantId'   => $tenant,
+			'receivedAt' => gmdate( 'c' ),
+			'roster'     => array(
+				'page'       => $page,
+				'perPage'    => $per_page,
+				'total'      => $total,
+				'totalPages' => $per_page > 0 ? (int) ceil( $total / $per_page ) : 0,
+				'users'      => $rows,
+			),
 		);
 	}
 
