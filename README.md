@@ -182,9 +182,14 @@ historical and superseded by the v3.0 model above.
 ## 📦 Installation
 
 1. **Upload the Plugin**
-   ```
-   Upload files to: /wp-content/plugins/wp-cognito-auth/
-   ```
+   - WordPress Admin → Plugins → Add New → Upload Plugin, and choose
+     `plugin/wp-cognito-auth.zip`. Its top folder is `wp-cognito-auth/`, so an
+     existing install is offered *Replace current with uploaded*.
+   - Never zip the `plugin/` folder by hand. That installs a second copy called
+     "plugin", which clashes with the first, and it ships `vendor/` and the tests.
+   - Maintainers: after any change under `plugin/`, rebuild the zip with
+     `scripts/build-plugin-zip.sh` and commit it. The script builds from the
+     committed tree, so commit the code change first.
 
 2. **Activate the Plugin**
    - Go to WordPress Admin → Plugins
