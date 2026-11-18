@@ -734,6 +734,25 @@ wp-cognito-auth/
 
 ## 📝 Changelog
 
+### Sync Lambda — stable platform user id (GL-906, stack update)
+- **Keys on `custom:uid ?? sub`**: MyBosun's user id is the Cognito
+  `custom:uid` attribute when a user has it and their `sub` otherwise
+  (GL-905). A pool rebuild (a disaster restore) recreates users with a NEW sub
+  and `custom:uid` = their OLD id. The Lambda now keys `TenantMemberships` and
+  the `StudentProfile` mirror on that platform id, returns it to WordPress
+  (`result.platformUserId`, and as the synthesised `sub` attribute for older
+  plugins), and `resolve_subs` returns it too. Cognito admin calls still use
+  the Cognito username. In normal running nobody has `custom:uid`, so nothing
+  changes.
+- **Updates read the user they updated** (one extra `AdminGetUser` per
+  update, already in the role's policy) to learn its platform id; deletes
+  read the user first and, when WordPress's id is no longer a username, find
+  them by email and delete only if that record carries the same platform id.
+- **Pair with plugin 3.4.0** (maintained in the MyBosun repo,
+  `wordpress-plugins/wp-cognito-auth/`), which links sign-ins by the platform
+  id. Tests: `node infrastructure/tests/stable-user-id.js` and
+  `node infrastructure/tests/identity-resolution.js`.
+
 ### Sync Lambda — `custom:wp_user_id` retired (stack update only, no plugin change)
 - **No more `custom:wp_user_id`**: the sync Lambda no longer writes the
   attribute on create or update. WordPress user IDs are per site while the
