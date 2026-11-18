@@ -300,15 +300,16 @@ Resources:
                           throw new Error('tenantId is required for user operations in v3.0');
                       }
                       const cognitoResult = await handleUserOperations(userPoolId, action, body.user);
-                      // Resolve the Cognito sub from the create/update response
-                      // (or look it up for older paths) so TenantMemberships and
-                      // StudentProfile.UserIndex are keyed correctly.
-                      const cognitoSub = await resolveCognitoSub(userPoolId, body.user, cognitoResult);
+                      // Resolve the PLATFORM user id (custom:uid ?? sub, GL-906) from
+                      // the create/update response (or look it up for older paths)
+                      // so TenantMemberships and StudentProfile.UserIndex are keyed
+                      // on the id MyBosun uses.
+                      const platformUserId = await resolvePlatformUserId(userPoolId, body.user, cognitoResult);
                       try {
                           if (action === 'delete') {
-                              await applyTenantUnsync(userPoolId, tenantId, body.user, cognitoSub);
+                              await applyTenantUnsync(userPoolId, tenantId, body.user, platformUserId);
                           } else {
-                              await applyTenantSync(userPoolId, tenantId, body.user, cognitoSub);
+                              await applyTenantSync(userPoolId, tenantId, body.user, platformUserId);
                           }
                       } catch (err) {
                           // Don't fail the entire sync if tenant-side mirror fails;
@@ -316,20 +317,23 @@ Resources:
                           console.error('Tenant-sync mirror failed (cognito op succeeded):', err);
                           throw err;
                       }
-                      // Surface the resolved sub on the response so the WP
+                      // Surface the resolved platform id on the response so the WP
                       // plugin can repopulate cognito_user_id user-meta after
                       // an unlink, and self-heal records that were keyed on
-                      // the email by the legacy create-fallback path.
-                      // AdminUpdateUserAttributes doesn't return a User object,
-                      // so we synthesise one matching the create-response shape
-                      // the plugin already extracts from.
+                      // the email by the legacy create-fallback path. The plugin
+                      // (3.4.0+) reads `platformUserId`; older plugins read the
+                      // `sub` attribute, so a synthesised User carries the platform
+                      // id there too. AdminUpdateUserAttributes doesn't return a
+                      // User object, so we synthesise one matching the
+                      // create-response shape the plugin already extracts from.
                       if (action !== 'delete' && cognitoResult) {
+                          cognitoResult.platformUserId = platformUserId;
                           if (!cognitoResult.User) {
-                              cognitoResult.User = { Username: cognitoSub, Attributes: [] };
+                              cognitoResult.User = { Username: platformUserId, Attributes: [] };
                           }
                           cognitoResult.User.Attributes = cognitoResult.User.Attributes || [];
                           if (!cognitoResult.User.Attributes.some(a => a.Name === 'sub')) {
-                              cognitoResult.User.Attributes.push({ Name: 'sub', Value: cognitoSub });
+                              cognitoResult.User.Attributes.push({ Name: 'sub', Value: platformUserId });
                           }
                       }
                       return cognitoResult;
@@ -361,35 +365,69 @@ Resources:
           // from the WP payload before trusting it as the TenantMembership PK.
           const COGNITO_SUB_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-          // The sub Cognito ACTUALLY acted on for this message, or null.
+          // GL-906 — the PLATFORM user id, exactly as the MyBosun layer resolves
+          // it (common-utilities identity/cognitoIdentity.js, GL-905):
           //
-          // A create response carries it in User.Attributes; updateUser stamps the
-          // username it successfully updated onto `cognitoUsername`. Either one is
-          // ground truth in a way the WP payload never is: WordPress only knows the
-          // sub it was told about last, and if that Cognito user has since been
-          // deleted, the sync silently recreates the person under a NEW sub while
-          // WP keeps sending the old one. Keying TenantMemberships on the stale sub
-          // splits the member's identity — a login as the new sub finds no tenant
-          // row, and the roster finds no profile. That is exactly what happened on
-          // 2026-09-21, so the Cognito response wins here, always.
-          function subFromCognitoResult(cognitoResult) {
+          //     userId = custom:uid ?? sub
+          //
+          // In normal running nobody has custom:uid, so the id IS the sub and
+          // nothing changes. After a pool rebuild (a disaster restore) every user
+          // has a NEW sub and custom:uid = their OLD id, which is what MyBosun's
+          // records and WordPress's cognito_user_id meta still hold. Keying tenant
+          // data on the new sub would split the member from every MyBosun record;
+          // handing it back to WordPress would re-key their site account. So the
+          // Cognito USERNAME (the sub) is used only for Cognito admin calls, and the
+          // platform id for everything else.
+          const UID_ATTRIBUTE = 'custom:uid';
+          function nonEmpty(value) {
+              return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+          }
+          // A Cognito user record: AdminGetUser (`UserAttributes`) or a create
+          // response's User (`Attributes`).
+          function platformIdOfCognitoUser(user) {
+              if (!user || typeof user !== 'object') return null;
+              const list = Array.isArray(user.UserAttributes) ? user.UserAttributes
+                  : Array.isArray(user.Attributes) ? user.Attributes : [];
+              const attrs = {};
+              for (const a of list) {
+                  if (a && typeof a.Name === 'string') attrs[a.Name] = a.Value;
+              }
+              return nonEmpty(attrs[UID_ATTRIBUTE]) || nonEmpty(attrs.sub) || nonEmpty(user.Username);
+          }
+
+          // The platform id of the user Cognito ACTUALLY acted on, or null.
+          //
+          // updateUser and deleteUser read the user they acted on and stamp
+          // `platformUserId`; a create response carries the new user's attributes.
+          // Either one is ground truth in a way the WP payload never is: WordPress
+          // only knows the id it was told about last, and if that Cognito user has
+          // since been deleted, the sync silently recreates the person under a NEW
+          // sub while WP keeps sending the old one. Keying TenantMemberships on the
+          // stale id splits the member's identity — a login as the new sub finds no
+          // tenant row, and the roster finds no profile. That is exactly what
+          // happened on 2026-09-21, so the Cognito response wins here, always. A
+          // RESTORED user is the opposite case: their record carries custom:uid =
+          // the id WP sent, so the two agree and nothing moves.
+          function platformIdFromCognitoResult(cognitoResult) {
               if (!cognitoResult) return null;
+              const stamped = nonEmpty(cognitoResult.platformUserId);
+              if (stamped) return stamped;
               const userObj = cognitoResult.User || (cognitoResult.result && cognitoResult.result.User);
               if (userObj && Array.isArray(userObj.Attributes)) {
                   const subAttr = userObj.Attributes.find(a => a.Name === 'sub');
-                  if (subAttr && COGNITO_SUB_RE.test(subAttr.Value)) return subAttr.Value;
+                  if (subAttr && COGNITO_SUB_RE.test(subAttr.Value)) return platformIdOfCognitoUser(userObj);
               }
               if (cognitoResult.cognitoUsername && COGNITO_SUB_RE.test(cognitoResult.cognitoUsername)) {
                   return cognitoResult.cognitoUsername;
               }
               return null;
           }
-          async function resolveCognitoSub(userPoolId, user, cognitoResult) {
+          async function resolvePlatformUserId(userPoolId, user, cognitoResult) {
               const passed = user.cognito_user_id && COGNITO_SUB_RE.test(user.cognito_user_id)
                   ? user.cognito_user_id
                   : null;
               // 1. What Cognito just did outranks what WP believes (see above).
-              const acted = subFromCognitoResult(cognitoResult);
+              const acted = platformIdFromCognitoResult(cognitoResult);
               if (acted) {
                   if (passed && passed !== acted) {
                       console.warn(`Stale cognito_user_id from WordPress for ${user.email}: WP sent ${passed}, Cognito resolved ${acted} — keying tenant data on ${acted}. Run the plugin's Cognito ID backfill so WP catches up.`);
@@ -410,9 +448,7 @@ Resources:
                       UserPoolId: userPoolId,
                       Username: user.email
                   }));
-                  const subAttr = (got.UserAttributes || []).find(a => a.Name === 'sub');
-                  if (subAttr) return subAttr.Value;
-                  return got.Username;
+                  return platformIdOfCognitoUser(got);
               } catch (err) {
                   console.warn(`Failed to resolve Cognito sub for ${user.email}:`, err.name);
                   return user.email; // last-resort
@@ -741,7 +777,7 @@ Resources:
               console.log(`Mirrored StudentProfile ${profile.studentId} for ${userId}/${tenantId}: status=${mirrorStatus}, approles=${approles.length}`);
           }
 
-          async function applyTenantSync(userPoolId, tenantId, user, cognitoSub) {
+          async function applyTenantSync(userPoolId, tenantId, user, platformUserId) {
               const { wpSync, membership: membershipConfig } = await getTenantConfig(tenantId);
               if (!wpSync || wpSync.isActive === false) {
                   console.log(`tenant ${tenantId} wpSync inactive or missing — skipping tenant sync`);
@@ -756,7 +792,7 @@ Resources:
               // flap between member and suspended.
               if (resolveStatusAuthority(membershipConfig) === 'mybosun') {
                   console.log(`tenant ${tenantId} statusAuthority=mybosun — identity upsert only (skipping status, Cognito groups, wpMembership and the StudentProfile status mirror)`);
-                  await upsertTenantMembershipIdentityOnly(cognitoSub, tenantId, wpSync.newUserDefaults);
+                  await upsertTenantMembershipIdentityOnly(platformUserId, tenantId, wpSync.newUserDefaults);
                   return;
               }
 
@@ -764,11 +800,11 @@ Resources:
               const status = accessLevel === 'suspended' ? 'SUSPENDED' : 'ACTIVE';
 
               await reconcileTenantGroups(userPoolId, user.email, tenantId, accessLevel);
-              await upsertTenantMembership(cognitoSub, tenantId, status, wpSync.newUserDefaults, user.membership || null);
-              await mirrorStudentProfile(cognitoSub, tenantId, status, accessLevel);
+              await upsertTenantMembership(platformUserId, tenantId, status, wpSync.newUserDefaults, user.membership || null);
+              await mirrorStudentProfile(platformUserId, tenantId, status, accessLevel);
           }
 
-          async function applyTenantUnsync(userPoolId, tenantId, user, cognitoSub) {
+          async function applyTenantUnsync(userPoolId, tenantId, user, platformUserId) {
               // Post-cutover a WordPress account removal is an IDENTITY event
               // and nothing more. Suspending a paid-up MyBosun member because
               // somebody tidied up the WordPress user list would be the same
@@ -795,8 +831,8 @@ Resources:
               } catch (err) {
                   console.error('Tenant group cleanup failed:', err);
               }
-              await deleteTenantMembership(cognitoSub, tenantId);
-              await mirrorStudentProfile(cognitoSub, tenantId, 'SUSPENDED', 'suspended');
+              await deleteTenantMembership(platformUserId, tenantId);
+              await mirrorStudentProfile(platformUserId, tenantId, 'SUSPENDED', 'suspended');
           }
 
           // Fans a batch of up to MAX_BULK_BATCH user payloads onto SQS using
@@ -849,12 +885,12 @@ Resources:
               };
           }
 
-          // Looks up Cognito subs by email for a batch of WP users. Used by the
-          // plugin to backfill cognito_user_id meta after bulk sync, since the
-          // async SQS path never returns the sub back to WP. AdminGetUser uses
-          // email as Username (matches createUser) and has a 5 TPS soft limit
-          // per user pool — we process serially in small batches to stay well
-          // under that without needing backoff logic.
+          // Looks up platform ids (custom:uid ?? sub, GL-906) by email for a batch
+          // of WP users. Used by the plugin to backfill cognito_user_id meta after
+          // bulk sync, since the async SQS path never returns the id back to WP.
+          // AdminGetUser uses email as Username (matches createUser) and has a
+          // 5 TPS soft limit per user pool — we process serially in small
+          // batches to stay well under that without needing backoff logic.
           const RESOLVE_SUBS_MAX_BATCH = 100;
           async function handleResolveSubs(userPoolId, body) {
               const lookups = Array.isArray(body.lookups) ? body.lookups : [];
@@ -881,10 +917,9 @@ Resources:
                           UserPoolId: userPoolId,
                           Username: email
                       }));
-                      const subAttr = (got.UserAttributes || []).find(a => a.Name === 'sub');
-                      const sub = (subAttr && subAttr.Value) || got.Username;
-                      if (sub) {
-                          mappings[wpUserId] = sub;
+                      const platformUserId = platformIdOfCognitoUser(got);
+                      if (platformUserId) {
+                          mappings[wpUserId] = platformUserId;
                       } else {
                           errored.push({ wp_user_id: wpUserId, email, reason: 'no sub on user' });
                       }
@@ -1071,20 +1106,27 @@ Resources:
                           UserPoolId: userPoolId,
                           Username: user.email
                       }));
-                      const subAttr = (got.UserAttributes || []).find(a => a.Name === 'sub');
-                      const resolvedSub = (subAttr && subAttr.Value) || got.Username;
-                      return await updateUser(userPoolId, { ...user, cognito_user_id: resolvedSub });
+                      return await updateUser(userPoolId, { ...user, cognito_user_id: cognitoUsernameOf(got) }, got);
                   }
                   console.error('Error in createUser:', error);
                   throw error;
               }
           }
-          async function updateUser(userPoolId, user) {
+          // The Cognito username to address a user record by (their sub in this
+          // pool, where the email is a sign-in alias).
+          function cognitoUsernameOf(got) {
+              const subAttr = (got.UserAttributes || []).find(a => a.Name === 'sub');
+              return got.Username || (subAttr && subAttr.Value);
+          }
+          // `known` is the AdminGetUser record for user.cognito_user_id when the
+          // caller already read it, which saves reading it again below.
+          async function updateUser(userPoolId, user, known) {
               if (!user.email) {
                   throw new Error('Email is required for user update');
               }
               // If we have a Cognito user ID, use it directly
               if (user.cognito_user_id) {
+                  let result;
                   try {
                       const input = {
                           UserPoolId: userPoolId,
@@ -1135,19 +1177,16 @@ Resources:
                       }
                       console.log('Updating user attributes:', JSON.stringify(input, null, 2));
                       const command = new AdminUpdateUserAttributesCommand(input);
-                      const result = await client.send(command);
+                      result = await client.send(command);
 
                       console.log('Raw updateUser result from Cognito:', JSON.stringify(result, null, 2));
-
-                      const finalResult = {
-                          ...result,
-                          cognitoUsername: user.cognito_user_id
-                      };
-
-                      console.log('Final updateUser result being returned:', JSON.stringify(finalResult, null, 2));
-                      return finalResult;
                   } catch (error) {
                       if (error.name === 'UserNotFoundException') {
+                          // Also the path a RESTORED user takes (GL-906): WP sends
+                          // their platform id, which is no longer anyone's
+                          // username. createUser finds them by email
+                          // (UsernameExistsException) and updates the live record,
+                          // whose custom:uid is that same id.
                           console.log('User not found with Cognito ID, attempting to create');
                           const createResult = await createUser(userPoolId, user);
                           console.log('Fallback createUser result:', JSON.stringify(createResult, null, 2));
@@ -1155,6 +1194,22 @@ Resources:
                       }
                       throw error;
                   }
+                  // The platform id of the user just updated (GL-906). The username
+                  // WP sent is their sub in normal running, but a restored user's
+                  // sub is not their platform id, so read the record unless the
+                  // caller already did.
+                  const record = known || await client.send(new AdminGetUserCommand({
+                      UserPoolId: userPoolId,
+                      Username: user.cognito_user_id
+                  }));
+                  const finalResult = {
+                      ...result,
+                      cognitoUsername: user.cognito_user_id,
+                      platformUserId: platformIdOfCognitoUser(record)
+                  };
+
+                  console.log('Final updateUser result being returned:', JSON.stringify(finalResult, null, 2));
+                  return finalResult;
               }
               // No Cognito ID was passed. The v3.0 async sync path never hands
               // the sub back to WP, so every update after the initial create
@@ -1165,10 +1220,9 @@ Resources:
                       UserPoolId: userPoolId,
                       Username: user.email
                   }));
-                  const subAttr = (got.UserAttributes || []).find(a => a.Name === 'sub');
-                  const resolvedSub = (subAttr && subAttr.Value) || got.Username;
-                  console.log(`Resolved Cognito sub by email for update: ${user.email} -> ${resolvedSub}`);
-                  return await updateUser(userPoolId, { ...user, cognito_user_id: resolvedSub });
+                  const resolvedUsername = cognitoUsernameOf(got);
+                  console.log(`Resolved Cognito user by email for update: ${user.email} -> ${resolvedUsername}`);
+                  return await updateUser(userPoolId, { ...user, cognito_user_id: resolvedUsername }, got);
               } catch (err) {
                   if (err.name !== 'UserNotFoundException') {
                       throw err;
@@ -1179,13 +1233,44 @@ Resources:
                   return createResult;
               }
           }
+          // WP sends the user's platform id (GL-906). In normal running that is
+          // their username (the sub). A restored user's is not, so they are found
+          // by email instead, and deleted ONLY if that record carries this same
+          // platform id: a delete must never land on somebody else's account.
+          async function findUserForDelete(userPoolId, user) {
+              try {
+                  return await client.send(new AdminGetUserCommand({
+                      UserPoolId: userPoolId,
+                      Username: user.cognito_user_id
+                  }));
+              } catch (error) {
+                  if (error.name !== 'UserNotFoundException') throw error;
+              }
+              if (!user.email) return null;
+              try {
+                  const got = await client.send(new AdminGetUserCommand({
+                      UserPoolId: userPoolId,
+                      Username: user.email
+                  }));
+                  if (platformIdOfCognitoUser(got) === user.cognito_user_id) return got;
+                  console.warn(`Delete: the Cognito user for ${user.email} has another platform id — not deleted`);
+                  return null;
+              } catch (error) {
+                  if (error.name !== 'UserNotFoundException') throw error;
+                  return null;
+              }
+          }
           async function deleteUser(userPoolId, user) {
               if (!user.cognito_user_id) {
                   throw new Error('Cognito User ID is required for deletion');
               }
+              const record = await findUserForDelete(userPoolId, user);
+              if (!record) {
+                  return { message: 'User not found' };
+              }
               const input = {
                   UserPoolId: userPoolId,
-                  Username: user.cognito_user_id
+                  Username: cognitoUsernameOf(record)
               };
               try {
                   console.log('Deleting user with input:', JSON.stringify(input, null, 2));
@@ -1193,7 +1278,8 @@ Resources:
                   const result = await client.send(command);
                   return {
                       ...result,
-                      cognitoUsername: user.cognito_user_id
+                      cognitoUsername: input.Username,
+                      platformUserId: platformIdOfCognitoUser(record)
                   };
               } catch (error) {
                   if (error.name === 'UserNotFoundException') {
